@@ -1,0 +1,61 @@
+# Architecture Specification & Technical Details
+
+## 1. Architectural Principles
+
+This application implements a modular compiler/transpiler architecture for converting source **Lua** ASTs into multi-target script outputs (**Bash**, **PowerShell**). The codebase adheres strictly to core Object-Oriented and Software Engineering patterns:
+
+* **Single Responsibility Principle (SRP):** Each module handles a distinct phase. `cli.lua` manages argument parsing and file I/O operations, `main.lua` orchestrates application lifecycle and component wiring, while target transpilers are fully decoupled translation backends.
+* **Inversion of Control (Wiring):** Dependencies are injected at the composition root (`main.lua`). CLI parsing logic has zero knowledge of target transpilers, lexers, or AST representations.
+* **Strategy Pattern & Polymorphic Interface:** All target code generators conform to a shared contract standard (`transpiler_interface.lua`). Target implementations (`bash_transpiler.lua`, `ps1_transpiler.lua`) can be registered or extended seamlessly without modifying core pipeline orchestration.
+
+---
+
+## 2. Interface Contract (`transpiler_interface.lua`)
+
+Every concrete transpiler module registered in the system MUST satisfy the following structural interface contract:
+
+### Required Contract Members
+
+* **`name`** (`string`): Target identifier used by CLI switches (e.g., `"bash"`, `"ps1"`).
+* **`extension`** (`string`): Target output file extension including leading dot (e.g., `".sh"`, `".ps1"`).
+* **`new()`** (`function -> object`): Factory method returning a target transformer instance.
+* **`:translate(luaAST)`** (`method -> targetAST`): Transforms a generic Lua AST into a target language AST.
+* **`Serializer.serialize(targetAST)`** (`function -> string`): Renders target AST nodes into a formatted output source string.
+
+---
+
+## 3. Component Architecture & System Boundaries
+
+```
+[ Input File ] ──► CLI Module ──► Raw Lua Source
+                                     │
+                                   Lexer
+                                     │
+                                Tokens Stream
+                                     │
+                                  Parser
+                                     │
+                               [ Lua AST ]
+                                     │
+              ┌──────────────────────┴──────────────────────┐
+              ▼                                             ▼
+     Bash Transpiler                               PS1 Transpiler
+  (Lua AST -> Bash AST)                         (Lua AST -> PS1 AST)
+              │                                             │
+       Bash Serializer                               PS1 Serializer
+              │                                             │
+   Bash Script (.sh Output)                      PS1 Script (.ps1 Output)
+
+```
+
+---
+
+## 4. System Module Summary
+
+| Module Name | Responsibilities | Key Contracts & Interface |
+| --- | --- | --- |
+| **`transpiler_interface.lua`** | Provides runtime assertion checks to validate target modules against the required backend contract. | `TranspilerInterface.validate(module, moduleName)` |
+| **`cli.lua`** | Handles command-line flag parsing (`-i`, `-o`, `-t`, `-v`, `-a`), prints usage help, and manages disk file reading and writing. | `CLI.parse(args)`, `CLI.readFile(path)`, `CLI.writeFile(path, content)` |
+| **`bash_transpiler.lua`** | Converts standard Lua AST nodes into POSIX/Bash-compatible syntax trees and formats output executable shell scripts. | Implements `TranspilerInterface` (`name = "bash"`, `extension = ".sh"`) |
+| **`ps1_transpiler.lua`** | Converts Lua AST nodes into PowerShell AST structures, handling comparison operator mappings (`==` to `-eq`, `<` to `-lt`). | Implements `TranspilerInterface` (`name = "ps1"`, `extension = ".ps1"`) |
+| **`main.lua`** | Composition root that registers transpiler targets, parses CLI input, triggers the lexer/parser pipeline, and runs serializations. | Application entry point |

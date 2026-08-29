@@ -1,0 +1,55 @@
+# Project Specification & Session Summary (Lua Transpiler Architecture)
+
+## 1. Overview & Architectural Shift
+During this session, we refactored the compiler/transpiler architecture to strictly enforce the **Single Responsibility Principle (SRP)**, **Inversion of Control (Wiring)**, and the **Strategy Pattern**.
+
+### Key Changes Identified & Applied:
+* **Decoupled `cli.lua`:** Removed all hardcoded dependencies on `Lexer`, `Parser`, or `Transpiler` modules from `cli.lua`. It now functions solely as a generic CLI argument parser and I/O helper.
+* **Centralized Wiring in `main.lua`:** Moved pipeline instantiation, module requirements, data flow orchestration, and execution logic directly into `main.lua`.
+* **Polymorphic Transpiler Interface:** Standardized all target code generators (Bash, PowerShell) behind a single uniform interface.
+* **Multi-Target Support:** Updated CLI parsing and execution flow to allow targeting individual backends (`-t bash`, `-t ps1`) or all registered targets simultaneously (`-t all`, default behavior).
+
+---
+
+## 2. Standardized Transpiler Interface Contract
+
+Every target transpiler implementation adheres to the contract specified in `transpiler_interface.lua`:
+
+* **Module Properties:**
+  * `name` (string): Unique identifier (e.g., `"bash"`, `"ps1"`).
+  * `extension` (string): Output file extension including dot (e.g., `".sh"`, `".ps1"`).
+* **Methods:**
+  * `new()`: Instantiates the transformer instance.
+  * `:translate(luaAST)`: Transforms a Lua AST into the target language's AST.
+  * `Serializer.serialize(targetAST)`: Serializes target AST nodes into valid target code text.
+
+Target Baseline Versions:
+* **Bash Target (`bash_transpiler.lua`):** Bash 3.2+ compatible (shebang, POSIX-compliant bracket testing `[ ... ]`, portable function definitions).
+* **PowerShell Target (`ps1_transpiler.lua`):** PowerShell 3.0+ / PS Core 6+ compatible (native comparison operators `-eq`, `-ne`, `-lt`, `$true`/`$false` literals, and `param(...)` blocks).
+
+---
+
+## 3. Complete Source Code Files
+
+Below are all the modular components created and updated during this session.
+
+### `transpiler_interface.lua`
+```lua
+-- ============================================================================
+-- Interface Contract Specification: Transpiler Module
+-- File: transpiler_interface.lua
+-- ============================================================================
+
+local TranspilerInterface = {}
+
+--- Runtime validator to ensure a module satisfies the contract
+function TranspilerInterface.validate(module, moduleName)
+    assert(type(module) == "table", moduleName .. " must be a table")
+    assert(type(module.name) == "string", moduleName .. " missing '.name' string")
+    assert(type(module.extension) == "string", moduleName .. " missing '.extension' string")
+    assert(type(module.new) == "function", moduleName .. " missing '.new()' constructor")
+    assert(type(module.Serializer) == "table", moduleName .. " missing '.Serializer' table")
+    assert(type(module.Serializer.serialize) == "function", moduleName .. " missing '.Serializer.serialize()' method")
+end
+
+return TranspilerInterface
