@@ -1,223 +1,272 @@
--- ============================================================================
--- Lua AST Generator (Parser)
--- File: lua_ast_generator.lua
--- Accepts: Token Stream from Lexer -> Outputs: Lua AST
--- ============================================================================
+-- Recursive-descent parser for the Lua subset supported by Luash.
 
 local Parser = {}
 Parser.__index = Parser
 
 function Parser.new(tokens)
-	local self = setmetatable({}, Parser)
-	self.tokens = tokens
-	self.pos = 1
-	return self
+    return setmetatable({ tokens = tokens, pos = 1 }, Parser)
 end
 
 function Parser:peek(offset)
-	offset = offset or 0
-	return self.tokens[self.pos + offset]
+    offset = offset or 0
+    return self.tokens[self.pos + offset]
 end
 
 function Parser:advance()
-	local tok = self:peek()
-	if tok and tok.type ~= "EOF" then
-		self.pos = self.pos + 1
-	end
-	return tok
+    local token = self:peek()
+    if token and token.type ~= "EOF" then
+        self.pos = self.pos + 1
+    end
+    return token
 end
 
-function Parser:expect(type, val)
-	local tok = self:peek()
-	if not tok or tok.type ~= type or (val and tok.value ~= val) then
-		error(
-			string.format(
-				"Parse Error: Expected %s %s, got %s '%s' at line %d",
-				type,
-				val or "",
-				tok and tok.type or "EOF",
-				tok and tok.value or "",
-				tok and tok.line or -1
-			)
-		)
-	end
-	return self:advance()
+function Parser:expect(tokenType, value)
+    local token = self:peek()
+    if not token or token.type ~= tokenType or (value and token.value ~= value) then
+        error(
+            string.format(
+                "Parse Error: expected %s %s, got %s '%s' at line %d",
+                tokenType,
+                value or "",
+                token and token.type or "EOF",
+                token and token.value or "",
+                token and token.line or -1
+            )
+        )
+    end
+    return self:advance()
 end
 
--- Expression Parsing
-function Parser:parseExpression()
-	local left = self:parsePrimary()
-	local tok = self:peek()
+function Parser:getOperatorPrecedence(operator)
+    local precedences = {
+        ["or"] = 1,
+        ["and"] = 2,
+        ["=="] = 3,
+        ["~="] = 3,
+        ["<"] = 3,
+        [">"] = 3,
+        ["<="] = 3,
+        [">="] = 3,
+        [".."] = 4,
+        ["+"] = 5,
+        ["-"] = 5,
+        ["*"] = 6,
+        ["/"] = 6,
+        ["%"] = 6,
+        ["^"] = 8,
+    }
+    return precedences[operator]
+end
 
-	if tok and tok.type == "OPERATOR" and tok.value:match("[+%-%*/%%==~=<>]") then
-		local op = self:advance().value
-		local right = self:parseExpression()
-		return {
-			type = "BinaryExpr",
-			operator = op,
-			left = left,
-			right = right,
-		}
-	end
-	return left
+function Parser:parseExpression(minPrecedence)
+    minPrecedence = minPrecedence or 0
+    local left = self:parsePrimary()
+
+    while true do
+        local token = self:peek()
+        local isWordOperator = token and token.type == "KEYWORD" and (token.value == "and" or token.value == "or")
+        local isSymbolOperator = token and token.type == "OPERATOR"
+        if not isWordOperator and not isSymbolOperator then
+            break
+        end
+
+        local precedence = self:getOperatorPrecedence(token.value)
+        if not precedence or precedence < minPrecedence then
+            break
+        end
+
+        local operator = self:advance().value
+        local rightAssociative = operator == "^" or operator == ".."
+        local right = self:parseExpression(precedence + (rightAssociative and 0 or 1))
+        left = { type = "BinaryExpr", operator = operator, left = left, right = right }
+    end
+
+    return left
+end
+
+function Parser:parseCall(callee)
+    self:expect("OPERATOR", "(")
+    local arguments = {}
+    if self:peek().value ~= ")" then
+        repeat
+            table.insert(arguments, self:parseExpression())
+            if self:peek().value ~= "," then
+                break
+            end
+            self:advance()
+        until false
+    end
+    self:expect("OPERATOR", ")")
+    return { type = "CallExpr", callee = callee, args = arguments }
 end
 
 function Parser:parsePrimary()
-	local tok = self:peek()
+    local token = self:peek()
+    if not token then
+        error("Parse Error: unexpected end of input in expression")
+    end
 
-	if tok.type == "NUMBER" then
-		return { type = "Literal", value = tonumber(self:advance().value) }
-	elseif tok.type == "STRING" then
-		return { type = "Literal", value = self:advance().value }
-	elseif tok.type == "KEYWORD" and (tok.value == "true" or tok.value == "false") then
-		return { type = "Literal", value = self:advance().value == "true" }
-	elseif tok.type == "IDENTIFIER" then
-		local id = self:advance().value
-		-- Function Call check
-		if self:peek() and self:peek().value == "(" then
-			self:advance() -- skip '('
-			local args = {}
-			if self:peek().value ~= ")" then
-				repeat
-					table.insert(args, self:parseExpression())
-					if self:peek().value == "," then
-						self:advance()
-					else
-						break
-					end
-				until false
-			end
-			self:expect("OPERATOR", ")")
-			return { type = "CallExpr", callee = id, args = args }
-		end
-		return { type = "Identifier", name = id }
-	end
+    if token.type == "NUMBER" then
+        return { type = "Literal", value = tonumber(self:advance().value) }
+    elseif token.type == "STRING" then
+        return { type = "Literal", value = self:advance().value }
+    elseif token.type == "KEYWORD" and (token.value == "true" or token.value == "false") then
+        return { type = "Literal", value = self:advance().value == "true" }
+    elseif token.type == "KEYWORD" and token.value == "nil" then
+        self:advance()
+        return { type = "Literal", value = nil }
+    elseif token.type == "IDENTIFIER" then
+        local name = self:advance().value
+        while self:peek() and self:peek().value == "." do
+            self:advance()
+            name = name .. "." .. self:expect("IDENTIFIER").value
+        end
+        if self:peek() and self:peek().value == "(" then
+            return self:parseCall(name)
+        end
+        return { type = "Identifier", name = name }
+    elseif token.type == "OPERATOR" and token.value == "(" then
+        self:advance()
+        local expression = self:parseExpression()
+        self:expect("OPERATOR", ")")
+        return expression
+    elseif token.type == "OPERATOR" and (token.value == "-" or token.value == "#") then
+        local operator = self:advance().value
+        return { type = "UnaryExpr", operator = operator, operand = self:parseExpression(7) }
+    elseif token.type == "KEYWORD" and token.value == "not" then
+        self:advance()
+        return { type = "UnaryExpr", operator = "not", operand = self:parseExpression(7) }
+    end
 
-	error(string.format("Unexpected token in expression: %s '%s'", tok.type, tok.value))
+    error(string.format("Parse Error: unexpected token in expression: %s '%s'", token.type, token.value))
 end
 
--- Statement Parsing
-function Parser:parseStatement()
-	local tok = self:peek()
+function Parser:parseNameList(firstName)
+    local names = { firstName }
+    while self:peek() and self:peek().value == "," do
+        self:advance()
+        table.insert(names, self:expect("IDENTIFIER").value)
+    end
+    return names
+end
 
-	-- Comments (No-op in AST)
-	if tok.type == "COMMENT" then
-		self:advance()
-		return { type = "NoOp" }
-	end
+function Parser:parseIfStatement()
+    self:expect("KEYWORD", "if")
+    local condition = self:parseExpression()
+    self:expect("KEYWORD", "then")
+    local statement = {
+        type = "IfStmt",
+        condition = condition,
+        body = self:parseBlock({ "else", "elseif", "end" }),
+    }
 
-	-- Local Variable or Local Function Declaration
-	if tok.type == "KEYWORD" and tok.value == "local" then
-		self:advance()
-		if self:peek(1) and self:peek(1).value == "=" then
-			local varName = self:expect("IDENTIFIER").value
-			self:expect("OPERATOR", "=")
-			local expr = self:parseExpression()
-			return { type = "LocalVarDecl", name = varName, init = expr }
-		elseif self:peek().value == "function" then
-			return self:parseFunctionDecl(true)
-		end
-	end
+    statement.elseifs = {}
+    while self:peek().type == "KEYWORD" and self:peek().value == "elseif" do
+        self:advance()
+        local elseifCondition = self:parseExpression()
+        self:expect("KEYWORD", "then")
+        table.insert(statement.elseifs, {
+            condition = elseifCondition,
+            body = self:parseBlock({ "else", "elseif", "end" }),
+        })
+    end
+    if #statement.elseifs == 0 then
+        statement.elseifs = nil
+    end
 
-	-- Global Function Declaration
-	if tok.type == "KEYWORD" and tok.value == "function" then
-		return self:parseFunctionDecl(false)
-	end
-
-	-- If Statement
-	if tok.type == "KEYWORD" and tok.value == "if" then
-		self:advance()
-		local condition = self:parseExpression()
-		self:expect("KEYWORD", "then")
-		local body = self:parseBlock({ "else", "elseif", "end" })
-		self:expect("KEYWORD", "end")
-		return { type = "IfStmt", condition = condition, body = body }
-	end
-
-	-- Return Statement
-	if tok.type == "KEYWORD" and tok.value == "return" then
-		self:advance()
-		local expr = self:parseExpression()
-		return { type = "ReturnStmt", value = expr }
-	end
-
-	-- Assignment or Standalone Expression
-	if tok.type == "IDENTIFIER" then
-		if self:peek(1) and self:peek(1).value == "=" then
-			local varName = self:advance().value
-			self:expect("OPERATOR", "=")
-			local expr = self:parseExpression()
-			return { type = "AssignmentStmt", name = varName, init = expr }
-		else
-			local expr = self:parseExpression()
-			return { type = "ExprStmt", expr = expr }
-		end
-	end
-
-	error(string.format("Unknown statement token: %s '%s' at line %d", tok.type, tok.value, tok.line))
+    if self:peek().type == "KEYWORD" and self:peek().value == "else" then
+        self:advance()
+        statement.elseBody = self:parseBlock({ "end" })
+    end
+    self:expect("KEYWORD", "end")
+    return statement
 end
 
 function Parser:parseFunctionDecl(isLocal)
-	if isLocal then
-		self:expect("KEYWORD", "function")
-	else
-		self:advance()
-	end
-	local name = self:expect("IDENTIFIER").value
-	self:expect("OPERATOR", "(")
-	local params = {}
-	if self:peek().value ~= ")" then
-		repeat
-			table.insert(params, self:expect("IDENTIFIER").value)
-			if self:peek().value == "," then
-				self:advance()
-			else
-				break
-			end
-		until false
-	end
-	self:expect("OPERATOR", ")")
-	local body = self:parseBlock({ "end" })
-	self:expect("KEYWORD", "end")
+    self:expect("KEYWORD", "function")
+    local name = self:expect("IDENTIFIER").value
+    self:expect("OPERATOR", "(")
+    local params = {}
+    if self:peek().value ~= ")" then
+        repeat
+            table.insert(params, self:expect("IDENTIFIER").value)
+            if self:peek().value ~= "," then
+                break
+            end
+            self:advance()
+        until false
+    end
+    self:expect("OPERATOR", ")")
+    local body = self:parseBlock({ "end" })
+    self:expect("KEYWORD", "end")
+    return { type = "FunctionDecl", name = name, params = params, body = body, isLocal = isLocal }
+end
 
-	return {
-		type = "FunctionDecl",
-		name = name,
-		params = params,
-		body = body,
-		isLocal = isLocal,
-	}
+function Parser:parseStatement()
+    local token = self:peek()
+    if token.type == "COMMENT" or (token.type == "OPERATOR" and token.value == ";") then
+        self:advance()
+        return { type = "NoOp" }
+    end
+
+    if token.type == "KEYWORD" and token.value == "local" then
+        self:advance()
+        if self:peek().type == "KEYWORD" and self:peek().value == "function" then
+            return self:parseFunctionDecl(true)
+        end
+        local names = self:parseNameList(self:expect("IDENTIFIER").value)
+        self:expect("OPERATOR", "=")
+        local init = self:parseExpression()
+        if #names == 1 then
+            return { type = "LocalVarDecl", name = names[1], init = init }
+        end
+        return { type = "MultiLocalVarDecl", names = names, init = init }
+    elseif token.type == "KEYWORD" and token.value == "function" then
+        return self:parseFunctionDecl(false)
+    elseif token.type == "KEYWORD" and token.value == "if" then
+        return self:parseIfStatement()
+    elseif token.type == "KEYWORD" and token.value == "return" then
+        self:advance()
+        return { type = "ReturnStmt", value = self:parseExpression() }
+    elseif token.type == "IDENTIFIER" then
+        local nextToken = self:peek(1)
+        if nextToken and (nextToken.value == "=" or nextToken.value == ",") then
+            local names = self:parseNameList(self:advance().value)
+            self:expect("OPERATOR", "=")
+            local init = self:parseExpression()
+            if #names == 1 then
+                return { type = "AssignmentStmt", name = names[1], init = init }
+            end
+            return { type = "MultiAssignmentStmt", names = names, init = init }
+        end
+        return { type = "ExprStmt", expr = self:parseExpression() }
+    end
+
+    error(string.format("Parse Error: unknown statement token %s '%s' at line %d", token.type, token.value, token.line))
 end
 
 function Parser:parseBlock(terminators)
-	local stmts = {}
-	local termMap = {}
-	for _, t in ipairs(terminators) do
-		termMap[t] = true
-	end
+    local statements = {}
+    local terminatorMap = {}
+    for _, terminator in ipairs(terminators) do
+        terminatorMap[terminator] = true
+    end
 
-	while self:peek() and self:peek().type ~= "EOF" do
-		local tok = self:peek()
-		if tok.type == "KEYWORD" and termMap[tok.value] then
-			break
-		end
-		local stmt = self:parseStatement()
-		if stmt.type ~= "NoOp" then
-			table.insert(stmts, stmt)
-		end
-	end
-	return stmts
+    while self:peek() and self:peek().type ~= "EOF" do
+        local token = self:peek()
+        if token.type == "KEYWORD" and terminatorMap[token.value] then
+            break
+        end
+        local statement = self:parseStatement()
+        if statement.type ~= "NoOp" then
+            table.insert(statements, statement)
+        end
+    end
+    return statements
 end
 
 function Parser:parse()
-	local ast = { type = "Program", body = {} }
-	while self:peek() and self:peek().type ~= "EOF" do
-		local stmt = self:parseStatement()
-		if stmt.type ~= "NoOp" then
-			table.insert(ast.body, stmt)
-		end
-	end
-	return ast
+    return { type = "Program", body = self:parseBlock({}) }
 end
 
 return Parser
