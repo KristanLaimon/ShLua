@@ -1,0 +1,16 @@
+# PowerShell AST Target
+- Target Version: PowerShell 3.0+ (including modern PowerShell Core 6.x / 7.x).
+
+## Key Constructs Used:
+- Function parameters via param(...) blocks: Standardized in PowerShell 2.0 and refined in 3.0.
+- Boolean literals ($true / $false): Supported across all PowerShell versions.
+- Operator syntax (-eq, -ne, -lt, -gt): Core PowerShell comparison operators stable across all versions.
+
+
+# Bash AST Target
+Target Version: Bash 3.2+ (compatible with older macOS default Bash as well as modern Linux distributions running Bash 4.x / 5.x).
+
+## Key Constructs Used:
+- Shebang line (#!/usr/bin/env bash): Portable standard for location discovery across POSIX-compliant environments
+- Conditionals ([ ... ]): Standard POSIX / single-bracket test expressions.
+- Function definitions (name() { ... }): Standard POSIX/Bash function syntax without requiring the optional function keyword, maximizing portability.
