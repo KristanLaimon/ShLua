@@ -1,16 +1,129 @@
-# PowerShell AST Target
-- Target Version: PowerShell 3.0+ (including modern PowerShell Core 6.x / 7.x).
+# Luash Alpha Compatibility
 
-## Key Constructs Used:
-- Function parameters via param(...) blocks: Standardized in PowerShell 2.0 and refined in 3.0.
-- Boolean literals ($true / $false): Supported across all PowerShell versions.
-- Operator syntax (-eq, -ne, -lt, -gt): Core PowerShell comparison operators stable across all versions.
+## 1. Host runtime
 
+- Intended host: Lua 5.1 or LuaJIT.
+- Runtime dependencies: Lua 5.1 standard library only; no LuaRocks or external modules.
+- Source code must remain valid under StyLua's `Lua51` parser and Luacheck's `lua51` standard.
+- `dist/luash.lua` is self-contained and works as both an executable CLI and `require("luash")` module.
 
-# Bash AST Target
-Target Version: Bash 3.2+ (compatible with older macOS default Bash as well as modern Linux distributions running Bash 4.x / 5.x).
+## 2. Supported input subset
 
-## Key Constructs Used:
-- Shebang line (#!/usr/bin/env bash): Portable standard for location discovery across POSIX-compliant environments
-- Conditionals ([ ... ]): Standard POSIX / single-bracket test expressions.
-- Function definitions (name() { ... }): Standard POSIX/Bash function syntax without requiring the optional function keyword, maximizing portability.
+### Values and variables
+
+- Number, string, boolean, and `nil` literals.
+- Local declarations with an initializer: `local name = expression`.
+- Variable assignments: `name = expression`.
+- Identifiers are simple Lua names; table fields, indexing, and method syntax are not general alpha features.
+- Multiple local/global assignment is supported only for `success, value = coroutine.resume(handle)`.
+
+### Expressions
+
+- Arithmetic: `+`, `-`, `*`, `/`, `%`, and `^`.
+- Concatenation: `..`.
+- Comparisons: `==`, `~=`, `<`, `>`, `<=`, and `>=`.
+- Logic: `and`, `or`, and `not`.
+- Unary minus and string length (`#identifier`).
+- Parenthesized expressions and nested named-function calls.
+
+Operator precedence and right associativity for exponentiation and concatenation are preserved by the parser. Target
+numeric behavior still follows the destination shell, as described below.
+
+### Statements and functions
+
+- Named global and local function declarations.
+- Function parameters and a single return expression.
+- Function calls and expression statements.
+- `if`, `elseif`, `else`, and nested conditional blocks.
+- `print(...)`, mapped to target-native output.
+- Short and long comments are ignored by the parser.
+
+### Not supported in alpha
+
+- `while`, `repeat`, numeric/generic `for`, and `break`.
+- Tables, indexing, field access, methods, metatables, and object-style calls.
+- Anonymous functions, closures that require captured mutable state, varargs, and general multiple returns.
+- Multiple expressions on the right side of declarations or assignments.
+- Modules such as `require`, `io`, `os`, and arbitrary Lua standard-library calls in transpiled input.
+- Full Lua error handling or exact Lua runtime coercion rules.
+
+The lexer recognizes more Lua tokens than the parser accepts. Tokenization does not imply that a construct is part of
+the transpilation subset.
+
+## 3. Coroutine compatibility
+
+Supported calls:
+
+```lua
+local co = coroutine.create(namedWorker)
+local ok, value = coroutine.resume(co)
+coroutine.yield(value) -- inside namedWorker
+```
+
+Alpha restrictions:
+
+- Create and resume calls must be at program top level.
+- The worker must be a named, parameterless function.
+- Its body may contain sequential `coroutine.yield(value)` calls and at most one final `return value`.
+- Yield and resume expose at most one payload value plus the resume success flag.
+- Every handle has independent state, including handles created from the same worker.
+- Resuming a completed handle returns `false, "cannot resume dead coroutine"`.
+
+Unsupported coroutine features include anonymous workers, resume arguments, values sent back into a yield, nested
+control flow or local declarations in workers, `wrap`, `status`, arbitrary scheduling, and native stack suspension.
+
+## 4. Bash target
+
+- Minimum target: Bash 3.2+.
+- Header: `#!/usr/bin/env bash`.
+- Functions use `name() { ...; }`; parameters are copied from positional arguments into local variables.
+- `print` uses `printf`; multiple arguments are tab-separated.
+- Function return values are written to stdout and captured with command substitution.
+- Arithmetic uses Bash arithmetic expansion. It is integer-oriented; division truncates and decimal behavior is not
+  Lua-compatible. Lua `^` maps to Bash `**`.
+- Equality uses string comparison; ordered comparisons use integer test operators.
+- `nil` lowers to an empty string.
+- Strings are single-quoted safely, while concatenation joins quoted fragments and variable expansions.
+
+Known semantic differences:
+
+- Output produced inside a value-returning function becomes part of the captured return text.
+- Shell variables do not preserve Lua value types.
+- Generated condition checks approximate truthiness. In particular, empty strings are false-like in generated Bash,
+  while Lua treats an empty string as true.
+- Exit statuses and stdout are separate in Bash, so Luash uses stdout for ordinary function values.
+
+## 5. PowerShell target
+
+- Minimum target: Windows PowerShell 3.0+; PowerShell Core 6+ is also supported.
+- Functions use `function name { param(...) ... }`.
+- `print` maps to `Write-Output`.
+- Comparisons map to `-eq`, `-ne`, `-lt`, `-gt`, `-le`, and `-ge`.
+- Concatenation maps to `+`; exponentiation maps to `[Math]::Pow`.
+- Booleans and `nil` map to `$true`, `$false`, and `$null`.
+- String length maps to `.Length`.
+- Coroutine handles use generated hashtables and dynamically dispatched worker functions.
+
+Known semantic differences:
+
+- PowerShell pipeline enumeration can differ from Lua's single-value return behavior.
+- PowerShell conversion and truthiness rules apply after transpilation and are not exact Lua coercion rules.
+- Multiple `Write-Output` arguments are pipeline output objects rather than a byte-for-byte Lua `print` emulation.
+
+## 6. Reserved generated names
+
+User source should not declare names beginning with `__luash_`. Both backends reserve that prefix for coroutine helpers,
+temporary resume results, and other generated runtime details.
+
+## 7. Compatibility verification
+
+Run from the repository root:
+
+```bash
+lua run_build.lua
+lua run_tests.lua
+lua run_check.lua
+```
+
+The suite executes generated Bash and PowerShell programs when those interpreters are installed. The quality runner
+also performs Lua syntax compilation, StyLua format checks, Luacheck analysis, and isolated bundled CLI/API smoke tests.
