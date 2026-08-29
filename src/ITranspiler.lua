@@ -31,12 +31,12 @@ local TranspilerInterface = {}
 
 --- Optional runtime validator to ensure a module satisfies the contract
 function TranspilerInterface.validate(module, moduleName)
-	assert(type(module) == "table", moduleName .. " must be a table")
-	assert(type(module.name) == "string", moduleName .. " missing '.name' string")
-	assert(type(module.extension) == "string", moduleName .. " missing '.extension' string")
-	assert(type(module.new) == "function", moduleName .. " missing '.new()' constructor")
-	assert(type(module.Serializer) == "table", moduleName .. " missing '.Serializer' table")
-	assert(type(module.Serializer.serialize) == "function", moduleName .. " missing '.Serializer.serialize()' method")
+    assert(type(module) == "table", moduleName .. " must be a table")
+    assert(type(module.name) == "string", moduleName .. " missing '.name' string")
+    assert(type(module.extension) == "string", moduleName .. " missing '.extension' string")
+    assert(type(module.new) == "function", moduleName .. " missing '.new()' constructor")
+    assert(type(module.Serializer) == "table", moduleName .. " missing '.Serializer' table")
+    assert(type(module.Serializer.serialize) == "function", moduleName .. " missing '.Serializer.serialize()' method")
 end
 
 return TranspilerInterface

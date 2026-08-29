@@ -4,16 +4,16 @@
 -- ============================================================================
 
 local CLI = {}
-local NAME = "luatranspile"
-local VERSION = "1.0.0"
+local NAME = "Luash"
+local VERSION = "0.1.0-alpha"
 
 function CLI.showHelp()
-	print(string.format(
-		[[
+    print(string.format(
+        [[
 %s v%s - Transpile Lua code to Bash, PowerShell, or both.
 
 USAGE:
-    lua main.lua [OPTIONS] -i <input.lua> [-o <output_prefix>]
+			lua main.lua [OPTIONS] -i <input.lua> [-o <output_prefix>]
 
 OPTIONS:
     -i, --input <file>     Path to input Lua script (Required).
@@ -24,69 +24,81 @@ OPTIONS:
     -v, --verbose          Print execution pipeline trace details.
     -h, --help             Show this help menu and exit.
 ]],
-		NAME,
-		VERSION
-	))
+        NAME,
+        VERSION
+    ))
 end
 
 function CLI.readFile(filepath)
-	local file, err = io.open(filepath, "r")
-	if not file then
-		error("CLI Error: Cannot open input file '" .. tostring(filepath) .. "': " .. tostring(err))
-	end
-	local content = file:read("*a")
-	file:close()
-	return content
+    local file, err = io.open(filepath, "r")
+    if not file then
+        error("CLI Error: Cannot open input file '" .. tostring(filepath) .. "': " .. tostring(err))
+    end
+    local content = file:read("*a")
+    file:close()
+    return content
 end
 
 function CLI.writeFile(filepath, content)
-	local file, err = io.open(filepath, "w")
-	if not file then
-		error("CLI Error: Cannot write output file '" .. tostring(filepath) .. "': " .. tostring(err))
-	end
-	file:write(content)
-	file:close()
+    local file, err = io.open(filepath, "w")
+    if not file then
+        error("CLI Error: Cannot write output file '" .. tostring(filepath) .. "': " .. tostring(err))
+    end
+    file:write(content)
+    file:close()
 end
 
 function CLI.parse(rawArgs)
-	local opts = {
-		input = nil,
-		output = nil,
-		target = "all", -- Default is set to transpile to both languages
-		dumpAst = false,
-		verbose = false,
-	}
+    local opts = {
+        input = nil,
+        output = nil,
+        target = "all", -- Default is set to transpile to both languages
+        dumpAst = false,
+        verbose = false,
+        help = false,
+    }
 
-	local i = 1
-	while i <= #rawArgs do
-		local a = rawArgs[i]
-		if a == "-h" or a == "--help" then
-			CLI.showHelp()
-			os.exit(0)
-		elseif a == "-v" or a == "--verbose" then
-			opts.verbose = true
-		elseif a == "-a" or a == "--dump-ast" then
-			opts.dumpAst = true
-		elseif a == "-i" or a == "--input" then
-			i = i + 1
-			opts.input = rawArgs[i]
-		elseif a == "-o" or a == "--output" then
-			i = i + 1
-			opts.output = rawArgs[i]
-		elseif a == "-t" or a == "--target" then
-			i = i + 1
-			opts.target = rawArgs[i]:lower()
-		else
-			error(string.format("CLI Error: Unknown option '%s'", a))
-		end
-		i = i + 1
-	end
+    local i = 1
+    while i <= #rawArgs do
+        local a = rawArgs[i]
+        if a == "-h" or a == "--help" then
+            opts.help = true
+        elseif a == "-v" or a == "--verbose" then
+            opts.verbose = true
+        elseif a == "-a" or a == "--dump-ast" then
+            opts.dumpAst = true
+        elseif a == "-i" or a == "--input" then
+            i = i + 1
+            if not rawArgs[i] then
+                error("CLI Error: --input requires a file path")
+            end
+            opts.input = rawArgs[i]
+        elseif a == "-o" or a == "--output" then
+            i = i + 1
+            if not rawArgs[i] then
+                error("CLI Error: --output requires a file path")
+            end
+            opts.output = rawArgs[i]
+        elseif a == "-t" or a == "--target" then
+            i = i + 1
+            if not rawArgs[i] then
+                error("CLI Error: --target requires bash, ps1, or all")
+            end
+            opts.target = rawArgs[i]:lower()
+        else
+            error(string.format("CLI Error: Unknown option '%s'", a))
+        end
+        i = i + 1
+    end
 
-	if not opts.input then
-		error("CLI Error: Input file missing. Specify one using '-i <file>'.")
-	end
+    if not opts.help and not opts.input then
+        error("CLI Error: Input file missing. Specify one using '-i <file>'.")
+    end
+    if opts.target ~= "bash" and opts.target ~= "ps1" and opts.target ~= "all" then
+        error("CLI Error: target must be 'bash', 'ps1', or 'all'")
+    end
 
-	return opts
+    return opts
 end
 
 return CLI
