@@ -13,10 +13,11 @@ function CLI.showHelp()
 %s v%s - Transpile Lua code to Bash, PowerShell, or both.
 
 USAGE:
-			lua main.lua [OPTIONS] -i <input.lua> [-o <output_prefix>]
+			lua main.lua <input.lua> [OPTIONS]
+			lua main.lua -i <input.lua> [OPTIONS]
 
 OPTIONS:
-    -i, --input <file>     Path to input Lua script (Required).
+    -i, --input <file>     Path to input Lua script.
     -o, --output <file>    Base path for output files (Optional).
                            If target is 'all', target extensions (.sh/.ps1) are appended.
     -t, --target <target>  Target language: 'bash', 'ps1', or 'all' (Default: 'all').
@@ -71,6 +72,8 @@ function CLI.parse(rawArgs)
             i = i + 1
             if not rawArgs[i] then
                 error("CLI Error: --input requires a file path")
+            elseif opts.input then
+                error("CLI Error: input file was specified more than once")
             end
             opts.input = rawArgs[i]
         elseif a == "-o" or a == "--output" then
@@ -85,14 +88,18 @@ function CLI.parse(rawArgs)
                 error("CLI Error: --target requires bash, ps1, or all")
             end
             opts.target = rawArgs[i]:lower()
-        else
+        elseif a:sub(1, 1) == "-" then
             error(string.format("CLI Error: Unknown option '%s'", a))
+        elseif opts.input then
+            error(string.format("CLI Error: Unexpected extra input file '%s'", a))
+        else
+            opts.input = a
         end
         i = i + 1
     end
 
     if not opts.help and not opts.input then
-        error("CLI Error: Input file missing. Specify one using '-i <file>'.")
+        error("CLI Error: Input file missing. Usage: lua luash.lua <input.lua> [OPTIONS]")
     end
     if opts.target ~= "bash" and opts.target ~= "ps1" and opts.target ~= "all" then
         error("CLI Error: target must be 'bash', 'ps1', or 'all'")

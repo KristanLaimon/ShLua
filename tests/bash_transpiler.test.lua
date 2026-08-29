@@ -28,7 +28,7 @@ local result = 1 + 2 * 3]])
         local code = transpile("local function add(a, b) return a + b end local result = add(2, 3)")
         expect(contains(code, "add() {")).toBeTruthy()
         expect(contains(code, 'local a="${1}"')).toBeTruthy()
-        expect(contains(code, "result=$(add 2 3)")).toBeTruthy()
+        expect(contains(code, 'result="$(add 2 3)"')).toBeTruthy()
         expect(contains(code, "return 0")).toBeTruthy()
     end)
 
@@ -55,6 +55,37 @@ if result == 5 then
 end]])
         expect(code:sub(1, 19)).toBe("#!/usr/bin/env bash")
         expect(contains(code, "'sum='\"${result}\"")).toBeTruthy()
+    end)
+
+    it("emits loops and lexical block names", function()
+        local code = transpile([[local value = "outer"
+while ready do break end
+repeat local value = "inner" until value == "inner"
+for i = 3, 1, -1 do print(i) end
+for index, item in ipairs(items) do print(index, item) end]])
+        expect(contains(code, "while ")).toBeTruthy()
+        expect(contains(code, "while :; do")).toBeTruthy()
+        expect(contains(code, "__luash_local_")).toBeTruthy()
+        expect(contains(code, "__luash_for_limit_")).toBeTruthy()
+        expect(contains(code, "__luash_for_collection_")).toBeTruthy()
+    end)
+
+    it("emits captured anonymous functions", function()
+        local code = transpile([[local function make(prefix)
+    return function(value) return prefix .. value end
+end
+local greet = make("hello ")
+print(greet("Lua"))]])
+        expect(contains(code, "__luash_closure_1()")).toBeTruthy()
+        expect(contains(code, '__luash_call "${greet}"')).toBeTruthy()
+    end)
+
+    it("rejects writes to captured values instead of changing their meaning", function()
+        expect(function()
+            transpile([[local value = 1
+local increment = function() value = value + 1 return value end
+print(increment())]])
+        end).toThrow("assignment to a captured closure variable")
     end)
 end)
 

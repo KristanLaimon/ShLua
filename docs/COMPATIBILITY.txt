@@ -12,8 +12,9 @@
 ### Values and variables
 
 - Number, string, boolean, and `nil` literals.
-- Local declarations with an initializer: `local name = expression`.
+- Local declarations with or without an initializer: `local name [= expression]`.
 - Variable assignments: `name = expression`.
+- Lexical binding resolution for chunk locals, function locals/parameters, block locals, and loop variables.
 - Identifiers are simple Lua names; table fields, indexing, and method syntax are not general alpha features.
 - Multiple local/global assignment is supported only for `success, value = coroutine.resume(handle)`.
 
@@ -32,17 +33,21 @@ numeric behavior still follows the destination shell, as described below.
 ### Statements and functions
 
 - Named global and local function declarations.
+- Anonymous function expressions and closures that read captured lexical values.
 - Function parameters and a single return expression.
 - Function calls and expression statements.
 - `if`, `elseif`, `else`, and nested conditional blocks.
+- `while`, `repeat`/`until`, numeric `for`, `break`, and explicit `do` blocks.
+- Generic `for` over `pairs(identifier)` or `ipairs(identifier)`; target-native collection construction is deferred to
+  the table-library phases.
 - `print(...)`, mapped to target-native output.
 - Short and long comments are ignored by the parser.
 
 ### Not supported in alpha
 
-- `while`, `repeat`, numeric/generic `for`, and `break`.
 - Tables, indexing, field access, methods, metatables, and object-style calls.
-- Anonymous functions, closures that require captured mutable state, varargs, and general multiple returns.
+- Assignment to captured closure variables, recursive local closures with captures, varargs, and general multiple
+  returns.
 - Multiple expressions on the right side of declarations or assignments.
 - Modules such as `require`, `io`, `os`, and arbitrary Lua standard-library calls in transpiled input.
 - Full Lua error handling or exact Lua runtime coercion rules.
@@ -77,6 +82,8 @@ control flow or local declarations in workers, `wrap`, `status`, arbitrary sched
 - Minimum target: Bash 3.2+.
 - Header: `#!/usr/bin/env bash`.
 - Functions use `name() { ...; }`; parameters are copied from positional arguments into local variables.
+- Lexical closures are encoded as generated callable values with captured fields and dispatched by the generated
+  `__luash_call` helper.
 - `print` uses `printf`; multiple arguments are tab-separated.
 - Function return values are written to stdout and captured with command substitution.
 - Arithmetic uses Bash arithmetic expansion. It is integer-oriented; division truncates and decimal behavior is not
@@ -88,6 +95,8 @@ control flow or local declarations in workers, `wrap`, `status`, arbitrary sched
 Known semantic differences:
 
 - Output produced inside a value-returning function becomes part of the captured return text.
+- Bash closure captures are read-only and use an internal field separator; capture values containing that reserved
+  separator are not portable.
 - Shell variables do not preserve Lua value types.
 - Generated condition checks approximate truthiness. In particular, empty strings are false-like in generated Bash,
   while Lua treats an empty string as true.
@@ -103,6 +112,7 @@ Known semantic differences:
 - Booleans and `nil` map to `$true`, `$false`, and `$null`.
 - String length maps to `.Length`.
 - Coroutine handles use generated hashtables and dynamically dispatched worker functions.
+- Anonymous closures use generated hashtables containing their function name and capture environment.
 
 Known semantic differences:
 

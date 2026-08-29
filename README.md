@@ -1,12 +1,12 @@
 # Luash
 
 Luash is a zero-runtime-dependency Lua-to-Bash and Lua-to-PowerShell transpiler. This repository currently ships an
-alpha supporting basic scripts, named functions, conditionals, expressions, and a restricted generator-style
-coroutine API.
+alpha supporting basic scripts, lexical locals, named and anonymous functions, conditionals, loops, expressions, and
+a restricted generator-style coroutine API.
 
 ```bash
 lua run_build.lua
-lua dist/luash.lua -i example.lua -o output/example -t all
+lua dist/luash.lua example.lua -o output/example -t all
 ```
 
 The build produces one reusable file. It can also be loaded as a Lua module:

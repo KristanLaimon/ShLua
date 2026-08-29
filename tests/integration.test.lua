@@ -75,6 +75,54 @@ ok, value = coroutine.resume(co)
 print(value)
 ]]
 
+local PHASE_THREE_SOURCE = [[
+local value = "outer"
+if true then
+    local value = "inner"
+    print(value)
+end
+
+local total = 0
+for i = 1, 5 do
+    if i == 4 then
+        break
+    end
+    total = total + i
+end
+while total < 8 do
+    total = total + 1
+end
+repeat
+    local finished = total >= 10
+    total = total + 1
+until finished
+
+local function make(prefix)
+    return function(suffix)
+        return prefix .. suffix
+    end
+end
+local greet = make("hello ")
+local function make_named(prefix)
+    local function join(suffix)
+        return prefix .. suffix
+    end
+    return join
+end
+local named_greet = make_named("named ")
+local function factorial(number)
+    if number <= 1 then
+        return 1
+    end
+    return number * factorial(number - 1)
+end
+print(value)
+print(total)
+print(greet("Lua"))
+print(named_greet("closure"))
+print(factorial(5))
+]]
+
 describe("Generated Script Integration", function()
     it("executes complex Bash output", function()
         local ok, output = executeTarget(BASIC_SOURCE, "bash")
@@ -112,6 +160,25 @@ describe("Generated Script Integration", function()
             error(output)
         end
         expect(output).toBe("one\ntwo\ndone\ncannot resume dead coroutine\n")
+    end)
+
+    it("executes Phase 1-3 Bash output", function()
+        local ok, output = executeTarget(PHASE_THREE_SOURCE, "bash")
+        if not ok then
+            error(output)
+        end
+        expect(output).toBe("inner\nouter\n11\nhello Lua\nnamed closure\n120\n")
+    end)
+
+    it("executes Phase 1-3 PowerShell output when PowerShell is installed", function()
+        if not commandAvailable("powershell") and not commandAvailable("pwsh") then
+            return
+        end
+        local ok, output = executeTarget(PHASE_THREE_SOURCE, "ps1")
+        if not ok then
+            error(output)
+        end
+        expect(output).toBe("inner\nouter\n11\nhello Lua\nnamed closure\n120\n")
     end)
 end)
 

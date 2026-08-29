@@ -1,6 +1,8 @@
 local BashTranspiler = { name = "bash", extension = ".sh" }
 BashTranspiler.__index = BashTranspiler
 
+local ScopeResolver = require("scope_resolver")
+
 local function isCall(node, name)
     return node and node.type == "CallExpr" and node.callee == name
 end
@@ -29,8 +31,94 @@ local function validateCoroutinePlacement(statements, nested)
             if statement.elseBody then
                 validateCoroutinePlacement(statement.elseBody, true)
             end
+        elseif
+            statement.type == "NumericForStmt"
+            or statement.type == "GenericForStmt"
+            or statement.type == "WhileStmt"
+            or statement.type == "RepeatStmt"
+            or statement.type == "DoStmt"
+        then
+            validateCoroutinePlacement(statement.body, true)
         end
     end
+end
+
+local function collectMetadata(program)
+    local closures = {}
+    local functionNames = {}
+    local capturedFunctionNames = {}
+    local visitExpression
+    local visitStatements
+
+    visitExpression = function(node)
+        if not node then
+            return
+        elseif node.type == "FunctionExpr" then
+            node.closureId = #closures + 1
+            table.insert(closures, node)
+            visitStatements(node.body)
+        elseif node.type == "BinaryExpr" then
+            visitExpression(node.left)
+            visitExpression(node.right)
+        elseif node.type == "UnaryExpr" then
+            visitExpression(node.operand)
+        elseif node.type == "CallExpr" then
+            for _, argument in ipairs(node.args) do
+                visitExpression(argument)
+            end
+        end
+    end
+
+    visitStatements = function(statements)
+        for _, statement in ipairs(statements) do
+            if statement.type == "FunctionDecl" then
+                local name = statement.resolvedName or statement.name
+                if #(statement.captures or {}) > 0 then
+                    if statement.recursive then
+                        error("BashTranspiler Error: recursive functions with captured outer locals are not supported")
+                    end
+                    statement.closureId = #closures + 1
+                    table.insert(closures, statement)
+                    capturedFunctionNames[name] = true
+                else
+                    functionNames[name] = true
+                end
+                visitStatements(statement.body)
+            elseif statement.type == "LocalVarDecl" or statement.type == "AssignmentStmt" then
+                visitExpression(statement.init)
+            elseif statement.type == "MultiLocalVarDecl" or statement.type == "MultiAssignmentStmt" then
+                visitExpression(statement.init)
+            elseif statement.type == "IfStmt" then
+                visitExpression(statement.condition)
+                visitStatements(statement.body)
+                for _, elseifNode in ipairs(statement.elseifs or {}) do
+                    visitExpression(elseifNode.condition)
+                    visitStatements(elseifNode.body)
+                end
+                if statement.elseBody then
+                    visitStatements(statement.elseBody)
+                end
+            elseif statement.type == "NumericForStmt" then
+                visitExpression(statement.startValue)
+                visitExpression(statement.endValue)
+                visitExpression(statement.stepValue)
+                visitStatements(statement.body)
+            elseif statement.type == "GenericForStmt" then
+                visitExpression(statement.iterator)
+                visitStatements(statement.body)
+            elseif statement.type == "WhileStmt" or statement.type == "RepeatStmt" then
+                visitExpression(statement.condition)
+                visitStatements(statement.body)
+            elseif statement.type == "DoStmt" then
+                visitStatements(statement.body)
+            else
+                visitExpression(statement.value or statement.expr)
+            end
+        end
+    end
+
+    visitStatements(program.body)
+    return closures, functionNames, capturedFunctionNames
 end
 
 function BashTranspiler.new()
@@ -86,10 +174,15 @@ end
 
 function BashTranspiler:translate(luaAST)
     assert(luaAST and luaAST.type == "Program", "BashTranspiler expects a Program AST")
+    ScopeResolver.resolve(luaAST)
+    local closures, functionNames, capturedFunctionNames = collectMetadata(luaAST)
     return {
         type = "BashScript",
         program = luaAST,
         coroutineWorkers = self:collectCoroutineWorkers(luaAST),
+        closures = closures,
+        functionNames = functionNames,
+        capturedFunctionNames = capturedFunctionNames,
     }
 end
 
@@ -97,14 +190,30 @@ local Generator = {}
 Generator.__index = Generator
 
 function Generator.new(targetAST)
-    return setmetatable({ workers = targetAST.coroutineWorkers }, Generator)
+    return setmetatable({
+        workers = targetAST.coroutineWorkers,
+        closures = targetAST.closures,
+        functionNames = targetAST.functionNames,
+        capturedFunctionNames = targetAST.capturedFunctionNames,
+        loopId = 0,
+        loopDepth = 0,
+    }, Generator)
+end
+
+function Generator:identifierValue(name, kind)
+    if self.capturedFunctionNames[name] then
+        return '"${' .. name .. '}"'
+    elseif kind == "function" or self.functionNames[name] then
+        return shellQuote(name)
+    end
+    return '"${' .. name .. '}"'
 end
 
 function Generator:arithmetic(node)
     if node.type == "Literal" and type(node.value) == "number" then
         return tostring(node.value)
     elseif node.type == "Identifier" then
-        return node.name
+        return node.resolvedName or node.name
     elseif node.type == "UnaryExpr" and node.operator == "-" then
         return "-(" .. self:arithmetic(node.operand) .. ")"
     elseif node.type == "BinaryExpr" then
@@ -170,7 +279,16 @@ function Generator:command(node)
         end
         return "printf '" .. table.concat(formats, "\\t") .. "\\n' " .. table.concat(arguments, " ")
     end
-    return node.callee .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
+    local callee = node.resolvedCallee or node.callee
+    local suffix = #arguments > 0 and " " .. table.concat(arguments, " ") or ""
+    if self.capturedFunctionNames[callee] then
+        return "__luash_call " .. self:identifierValue(callee, node.calleeKind) .. suffix
+    elseif node.calleeKind == "function" or self.functionNames[callee] then
+        return callee .. suffix
+    elseif node.calleeIsLocal or callee:find("^__luash_local_") then
+        return "__luash_call " .. self:identifierValue(callee, node.calleeKind) .. suffix
+    end
+    return callee .. suffix
 end
 
 function Generator:expression(node)
@@ -187,9 +305,11 @@ function Generator:expression(node)
         if node.name:find("%.") then
             error("BashTranspiler Error: dotted values are supported only as calls")
         end
-        return '"${' .. node.name .. '}"'
+        return self:identifierValue(node.resolvedName or node.name, node.bindingKind)
     elseif node.type == "CallExpr" then
-        return "$(" .. self:command(node) .. ")"
+        return '"$(' .. self:command(node) .. ')"'
+    elseif node.type == "FunctionExpr" then
+        return self:closureValue(node)
     elseif node.type == "UnaryExpr" then
         if node.operator == "-" then
             return "$(( " .. self:arithmetic(node) .. " ))"
@@ -214,6 +334,39 @@ function Generator:expression(node)
         return "$(if " .. self:condition(node) .. "; then printf true; else printf false; fi)"
     end
     error("BashTranspiler Error: unsupported expression " .. tostring(node.type))
+end
+
+function Generator:closureValue(node)
+    local value = '"__luash_closure_' .. node.closureId
+    for _, capture in ipairs(node.captures or {}) do
+        value = value .. "${__luash_closure_separator}"
+        if
+            (capture.kind == "function" and not self.capturedFunctionNames[capture.resolvedName])
+            or self.functionNames[capture.resolvedName]
+        then
+            value = value .. capture.resolvedName
+        else
+            value = value .. "${" .. capture.resolvedName .. "}"
+        end
+    end
+    return value .. '"'
+end
+
+function Generator:closure(node, level)
+    local output = { indent(level) .. "__luash_closure_" .. node.closureId .. "() {" }
+    for _, capture in ipairs(node.captures or {}) do
+        table.insert(output, indent(level + 1) .. "local " .. capture.resolvedName .. '="$1"')
+        table.insert(output, indent(level + 1) .. "shift")
+    end
+    for _, parameter in ipairs(node.resolvedParams or node.params) do
+        table.insert(output, indent(level + 1) .. "local " .. parameter .. '="$1"')
+        table.insert(output, indent(level + 1) .. "shift")
+    end
+    for _, bodyStatement in ipairs(node.body) do
+        table.insert(output, self:statement(bodyStatement, level + 1, true))
+    end
+    table.insert(output, indent(level) .. "}")
+    return table.concat(output, "\n")
 end
 
 function Generator:coroutineWorker(statement, level)
@@ -258,10 +411,11 @@ function Generator:coroutineCreate(statement, level, inFunction)
     local prefix = indent(level)
     local modifier = inFunction and statement.type == "LocalVarDecl" and "local " or ""
     local worker = statement.init.args[1].name
+    local name = statement.resolvedName or statement.name
     return table.concat({
-        prefix .. modifier .. statement.name .. "=" .. shellQuote(statement.name),
-        prefix .. statement.name .. "__worker=" .. shellQuote(worker),
-        prefix .. statement.name .. "__state=0",
+        prefix .. modifier .. name .. "=" .. shellQuote(name),
+        prefix .. name .. "__worker=" .. shellQuote(worker),
+        prefix .. name .. "__state=0",
     }, "\n")
 end
 
@@ -286,8 +440,17 @@ function Generator:statement(statement, level, inFunction)
         if self.workers[statement.name] then
             return self:coroutineWorker(statement, level)
         end
-        local output = { indent(level) .. statement.name .. "() {" }
-        for index, parameter in ipairs(statement.params) do
+        if statement.closureId then
+            local modifier = inFunction and statement.isLocal and "local " or ""
+            return indent(level)
+                .. modifier
+                .. (statement.resolvedName or statement.name)
+                .. "="
+                .. self:closureValue(statement)
+        end
+        local functionName = statement.resolvedName or statement.name
+        local output = { indent(level) .. functionName .. "() {" }
+        for index, parameter in ipairs(statement.resolvedParams or statement.params) do
             table.insert(output, indent(level + 1) .. "local " .. parameter .. '="${' .. index .. '}"')
         end
         for _, bodyStatement in ipairs(statement.body) do
@@ -296,11 +459,14 @@ function Generator:statement(statement, level, inFunction)
         table.insert(output, indent(level) .. "}")
         return table.concat(output, "\n")
     elseif statement.type == "LocalVarDecl" or statement.type == "AssignmentStmt" then
+        if statement.isCapturedAssignment then
+            error("BashTranspiler Error: assignment to a captured closure variable is not supported")
+        end
         if isCall(statement.init, "coroutine.create") then
             return self:coroutineCreate(statement, level, inFunction)
         elseif isCall(statement.init, "coroutine.resume") then
             return self:coroutineResume(
-                { statement.name },
+                { statement.resolvedName or statement.name },
                 statement.init,
                 level,
                 inFunction,
@@ -308,13 +474,17 @@ function Generator:statement(statement, level, inFunction)
             )
         end
         local modifier = inFunction and statement.type == "LocalVarDecl" and "local " or ""
-        return indent(level) .. modifier .. statement.name .. "=" .. self:expression(statement.init)
+        return indent(level)
+            .. modifier
+            .. (statement.resolvedName or statement.name)
+            .. "="
+            .. self:expression(statement.init)
     elseif statement.type == "MultiLocalVarDecl" or statement.type == "MultiAssignmentStmt" then
         if not isCall(statement.init, "coroutine.resume") then
             error("BashTranspiler Error: multiple assignment is supported only for coroutine.resume")
         end
         return self:coroutineResume(
-            statement.names,
+            statement.resolvedNames or statement.names,
             statement.init,
             level,
             inFunction,
@@ -339,6 +509,113 @@ function Generator:statement(statement, level, inFunction)
         end
         table.insert(output, indent(level) .. "fi")
         return table.concat(output, "\n")
+    elseif statement.type == "WhileStmt" then
+        local output = { indent(level) .. "while " .. self:condition(statement.condition) .. "; do" }
+        self.loopDepth = self.loopDepth + 1
+        for _, bodyStatement in ipairs(statement.body) do
+            table.insert(output, self:statement(bodyStatement, level + 1, inFunction))
+        end
+        self.loopDepth = self.loopDepth - 1
+        table.insert(output, indent(level) .. "done")
+        return table.concat(output, "\n")
+    elseif statement.type == "RepeatStmt" then
+        local output = { indent(level) .. "while :; do" }
+        self.loopDepth = self.loopDepth + 1
+        for _, bodyStatement in ipairs(statement.body) do
+            table.insert(output, self:statement(bodyStatement, level + 1, inFunction))
+        end
+        table.insert(output, indent(level + 1) .. "if " .. self:condition(statement.condition) .. "; then")
+        table.insert(output, indent(level + 2) .. "break")
+        table.insert(output, indent(level + 1) .. "fi")
+        self.loopDepth = self.loopDepth - 1
+        table.insert(output, indent(level) .. "done")
+        return table.concat(output, "\n")
+    elseif statement.type == "NumericForStmt" then
+        self.loopId = self.loopId + 1
+        local id = self.loopId
+        local valueName = "__luash_for_value_" .. id
+        local limitName = "__luash_for_limit_" .. id
+        local stepName = "__luash_for_step_" .. id
+        local variableName = statement.resolvedName or statement.name
+        local modifier = inFunction and "local " or ""
+        local output = {
+            indent(level) .. modifier .. valueName .. "=$(( " .. self:arithmetic(statement.startValue) .. " ))",
+            indent(level) .. modifier .. limitName .. "=$(( " .. self:arithmetic(statement.endValue) .. " ))",
+            indent(level) .. modifier .. stepName .. "=$(( " .. self:arithmetic(statement.stepValue) .. " ))",
+            indent(level)
+                .. 'while { [ "$'
+                .. stepName
+                .. '" -gt 0 ] && [ "$'
+                .. valueName
+                .. '" -le "$'
+                .. limitName
+                .. '" ]; } || { [ "$'
+                .. stepName
+                .. '" -le 0 ] && [ "$'
+                .. valueName
+                .. '" -ge "$'
+                .. limitName
+                .. '" ]; }; do',
+            indent(level + 1) .. modifier .. variableName .. '="$' .. valueName .. '"',
+        }
+        self.loopDepth = self.loopDepth + 1
+        for _, bodyStatement in ipairs(statement.body) do
+            table.insert(output, self:statement(bodyStatement, level + 1, inFunction))
+        end
+        self.loopDepth = self.loopDepth - 1
+        table.insert(output, indent(level + 1) .. valueName .. "=$(($" .. valueName .. " + $" .. stepName .. "))")
+        table.insert(output, indent(level) .. "done")
+        return table.concat(output, "\n")
+    elseif statement.type == "GenericForStmt" then
+        local iterator = statement.iterator
+        if
+            iterator.type ~= "CallExpr"
+            or (iterator.callee ~= "pairs" and iterator.callee ~= "ipairs")
+            or #iterator.args ~= 1
+            or iterator.args[1].type ~= "Identifier"
+        then
+            error("BashTranspiler Error: generic for currently supports pairs(identifier) or ipairs(identifier)")
+        end
+        self.loopId = self.loopId + 1
+        local indexName = "__luash_for_index_" .. self.loopId
+        local arrayName = iterator.args[1].resolvedName or iterator.args[1].name
+        local collectionName = "__luash_for_collection_" .. self.loopId
+        local names = statement.resolvedNames or statement.names
+        local modifier = inFunction and "local " or ""
+        local output = {
+            indent(level) .. modifier .. collectionName .. '=("${' .. arrayName .. '[@]}")',
+            indent(level) .. "for " .. indexName .. ' in "${!' .. collectionName .. '[@]}"; do',
+        }
+        if names[1] then
+            table.insert(output, indent(level + 1) .. modifier .. names[1] .. "=$(($" .. indexName .. " + 1))")
+        end
+        if names[2] then
+            table.insert(
+                output,
+                indent(level + 1) .. modifier .. names[2] .. '="${' .. collectionName .. "[$" .. indexName .. ']}"'
+            )
+        end
+        for index = 3, #names do
+            table.insert(output, indent(level + 1) .. modifier .. names[index] .. "=''")
+        end
+        self.loopDepth = self.loopDepth + 1
+        for _, bodyStatement in ipairs(statement.body) do
+            table.insert(output, self:statement(bodyStatement, level + 1, inFunction))
+        end
+        self.loopDepth = self.loopDepth - 1
+        table.insert(output, indent(level) .. "done")
+        return table.concat(output, "\n")
+    elseif statement.type == "DoStmt" then
+        local output = {}
+        for _, bodyStatement in ipairs(statement.body) do
+            table.insert(output, self:statement(bodyStatement, level, inFunction))
+        end
+        return table.concat(output, "\n")
+    elseif statement.type == "BreakStmt" then
+        if self.loopDepth == 0 then
+            error("BashTranspiler Error: break must be inside a loop")
+        end
+        return indent(level) .. "break"
     elseif statement.type == "ReturnStmt" then
         return indent(level)
             .. "printf '%s\\n' "
@@ -357,7 +634,27 @@ function Generator:statement(statement, level, inFunction)
 end
 
 function Generator:runtime()
-    return [[__luash_coroutine_ok=''
+    return [[__luash_closure_separator="$(printf '\034')"
+__luash_call() {
+    local __luash_callable="$1"
+    shift
+    local __luash_call_args=("$@")
+    case "$__luash_callable" in
+        __luash_closure_*)
+            local __luash_old_ifs="$IFS"
+            IFS="$__luash_closure_separator"
+            local __luash_closure_parts=()
+            read -r -a __luash_closure_parts <<< "$__luash_callable"
+            IFS="$__luash_old_ifs"
+            "${__luash_closure_parts[0]}" "${__luash_closure_parts[@]:1}" "${__luash_call_args[@]}"
+            ;;
+        *)
+            "$__luash_callable" "${__luash_call_args[@]}"
+            ;;
+    esac
+}
+
+__luash_coroutine_ok=''
 __luash_coroutine_value=''
 __luash_coroutine_resume() {
     local __handle="$1"
@@ -373,9 +670,9 @@ __luash_coroutine_resume() {
 end
 
 function Generator:generate(program)
-    local output = { "#!/usr/bin/env bash", "" }
-    if next(self.workers) then
-        table.insert(output, self:runtime())
+    local output = { "#!/usr/bin/env bash", "", self:runtime(), "" }
+    for _, closure in ipairs(self.closures) do
+        table.insert(output, self:closure(closure, 0))
         table.insert(output, "")
     end
     for _, statement in ipairs(program.body) do

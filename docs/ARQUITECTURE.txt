@@ -30,6 +30,9 @@ Parser (src/parser.lua)
     v
 Lua subset AST
     |
+    v
+Lexical scope resolver (src/scope_resolver.lua)
+    |
     +--------------------------+
     |                          |
     v                          v
@@ -58,6 +61,7 @@ only a location-independent launcher that adds `src/` to `package.path` and dele
 | `src/cli.lua` | Option parsing plus input/output file operations. |
 | `src/lexer.lua` | Converts source text into tokens with source locations. |
 | `src/parser.lua` | Produces the supported Lua AST using recursive descent and precedence climbing. |
+| `src/scope_resolver.lua` | Resolves lexical bindings, block-local generated names, captures, and recursive names. |
 | `src/ITranspiler.lua` | Validates the structural target-backend contract. |
 | `src/bash_transpiler.lua` | Validates Bash constraints and serializes executable Bash 3.2+ source. |
 | `src/ps1_transpiler.lua` | Validates PowerShell constraints and serializes PowerShell 3.0+ source. |
@@ -86,21 +90,26 @@ Every registered backend must provide:
 - `instance:translate(luaAST)` returning a target wrapper.
 - `Serializer.serialize(targetAST)` returning executable source text.
 
-The current wrappers are `BashScript` and `PS1Script`. They retain the parsed program and the validated coroutine
-worker set. Target-specific generator objects own quoting, expression mapping, statement rendering, runtime helpers,
-and final serialization. Backend validation happens before output is emitted.
+The current wrappers are `BashScript` and `PS1Script`. They retain the resolved program, closure/function metadata,
+and the validated coroutine worker set. Target-specific generator objects own quoting, expression mapping, statement
+rendering, runtime helpers, and final serialization. Backend validation happens before output is emitted.
 
 ## 6. Lua AST contract
 
 The parser currently produces:
 
-- Statements: `FunctionDecl`, `IfStmt`, `LocalVarDecl`, `AssignmentStmt`, `MultiLocalVarDecl`,
-  `MultiAssignmentStmt`, `ReturnStmt`, and `ExprStmt`.
-- Expressions: `CallExpr`, `BinaryExpr`, `UnaryExpr`, `Identifier`, and `Literal`.
+- Statements: `FunctionDecl`, `IfStmt`, `WhileStmt`, `RepeatStmt`, `NumericForStmt`, `GenericForStmt`, `DoStmt`,
+  `BreakStmt`, `LocalVarDecl`, `AssignmentStmt`, `MultiLocalVarDecl`, `MultiAssignmentStmt`, `ReturnStmt`, and
+  `ExprStmt`.
+- Expressions: `FunctionExpr`, `CallExpr`, `BinaryExpr`, `UnaryExpr`, `Identifier`, and `Literal`.
 - `IfStmt` may include `elseifs` and `elseBody`.
 - A dotted supported call such as `coroutine.resume(co)` is represented by a string callee on `CallExpr`.
 
 Multiple assignment is intentionally accepted only for the two values returned by `coroutine.resume` in alpha.
+
+The scope resolver annotates declarations, identifiers, and call targets with resolved names. It also records the
+outer lexical bindings read by function expressions and captured named functions. This shared pass keeps both targets
+on the same binding model even though their native shell scope rules differ.
 
 ## 7. Coroutine lowering
 

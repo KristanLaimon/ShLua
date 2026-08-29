@@ -1,5 +1,5 @@
 -- ============================================================================
--- Lexical Analyzer for Lua 5.4 Syntax
+-- Lexical Analyzer for the Lua 5.1 syntax used by Luash.
 -- File: lexer.lua
 -- Language: Lua (Output/Comments in English)
 -- ============================================================================
@@ -29,7 +29,6 @@ local KEYWORDS = {
     ["false"] = true,
     ["for"] = true,
     ["function"] = true,
-    ["goto"] = true,
     ["if"] = true,
     ["in"] = true,
     ["local"] = true,
@@ -52,10 +51,6 @@ local MULTI_OPS = {
     "~=",
     "<=",
     ">=",
-    "//",
-    "::",
-    "<<",
-    ">>",
 }
 
 -- Single-character operators/symbols
@@ -67,9 +62,6 @@ local SINGLE_OPS = {
     "%",
     "^",
     "#",
-    "&",
-    "~",
-    "|",
     "<",
     ">",
     "=",
@@ -174,24 +166,37 @@ end
 -- Read standard single or double-quoted string
 function Lexer:readString(quote)
     self:advance() -- skip opening quote
-    local start_pos = self.pos
-    local escaped = false
+    local value = {}
 
     while self.pos <= self.length do
         local ch = self:peek()
-        if escaped then
-            escaped = false
+        if ch == "\\" then
             self:advance()
-        elseif ch == "\\" then
-            escaped = true
+            local escaped = self:peek()
+            local escapes = {
+                ["a"] = "\a",
+                ["b"] = "\b",
+                ["f"] = "\f",
+                ["n"] = "\n",
+                ["r"] = "\r",
+                ["t"] = "\t",
+                ["v"] = "\v",
+                ["\\"] = "\\",
+                ['"'] = '"',
+                ["'"] = "'",
+            }
+            if not escaped then
+                error(string.format("Lexer Error: Unclosed string literal near line %d", self.line))
+            end
+            table.insert(value, escapes[escaped] or escaped)
             self:advance()
         elseif ch == quote then
-            local val = self.input:sub(start_pos, self.pos - 1)
             self:advance() -- skip closing quote
-            return val
+            return table.concat(value)
         elseif ch == "\n" then
             error(string.format("Lexer Error: Unescaped newline in string at line %d", self.line))
         else
+            table.insert(value, ch)
             self:advance()
         end
     end
@@ -205,28 +210,45 @@ function Lexer:readNumber()
     -- Hexadecimal numbers
     if self:peek() == "0" and (self:peek(1) == "x" or self:peek(1) == "X") then
         self:advance(2)
-        while self.pos <= self.length do
-            local ch = self:peek()
-            if ch:find("[0-9a-fA-F.]") or ch == "p" or ch == "P" or ch == "+" or ch == "-" then
-                self:advance()
-            else
-                break
-            end
+        local digits = 0
+        while self:peek() and self:peek():find("[0-9a-fA-F]") do
+            digits = digits + 1
+            self:advance()
+        end
+        if digits == 0 then
+            error(string.format("Lexer Error: Malformed hexadecimal number at line %d", self.line))
         end
         return self.input:sub(start_pos, self.pos - 1)
     end
 
-    -- Decimal numbers (integer/float/exponent)
-    while self.pos <= self.length do
-        local ch = self:peek()
-        if ch and (ch:find("[%d%.]") or ch == "e" or ch == "E") then
+    -- Decimal numbers (integer, fraction, and optional exponent).
+    if self:peek() == "." then
+        self:advance()
+        while self:peek() and self:peek():find("%d") do
             self:advance()
-            -- Handle exponent signs (e.g. 1e+10 or 1e-5)
-            if (self:peek(-1) == "e" or self:peek(-1) == "E") and (self:peek() == "+" or self:peek() == "-") then
+        end
+    else
+        while self:peek() and self:peek():find("%d") do
+            self:advance()
+        end
+        if self:peek() == "." and self:peek(1) ~= "." then
+            self:advance()
+            while self:peek() and self:peek():find("%d") do
                 self:advance()
             end
-        else
-            break
+        end
+    end
+
+    if self:peek() == "e" or self:peek() == "E" then
+        self:advance()
+        if self:peek() == "+" or self:peek() == "-" then
+            self:advance()
+        end
+        if not self:peek() or not self:peek():find("%d") then
+            error(string.format("Lexer Error: Malformed exponent at line %d", self.line))
+        end
+        while self:peek() and self:peek():find("%d") do
+            self:advance()
         end
     end
 

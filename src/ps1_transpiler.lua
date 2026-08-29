@@ -1,6 +1,8 @@
 local PS1Transpiler = { name = "ps1", extension = ".ps1" }
 PS1Transpiler.__index = PS1Transpiler
 
+local ScopeResolver = require("scope_resolver")
+
 local function isCall(node, name)
     return node and node.type == "CallExpr" and node.callee == name
 end
@@ -29,8 +31,91 @@ local function validateCoroutinePlacement(statements, nested)
             if statement.elseBody then
                 validateCoroutinePlacement(statement.elseBody, true)
             end
+        elseif
+            statement.type == "NumericForStmt"
+            or statement.type == "GenericForStmt"
+            or statement.type == "WhileStmt"
+            or statement.type == "RepeatStmt"
+            or statement.type == "DoStmt"
+        then
+            validateCoroutinePlacement(statement.body, true)
         end
     end
+end
+
+local function collectMetadata(program)
+    local closures = {}
+    local functionNames = {}
+    local capturedFunctionNames = {}
+    local visitExpression
+    local visitStatements
+
+    visitExpression = function(node)
+        if not node then
+            return
+        elseif node.type == "FunctionExpr" then
+            node.closureId = #closures + 1
+            table.insert(closures, node)
+            visitStatements(node.body)
+        elseif node.type == "BinaryExpr" then
+            visitExpression(node.left)
+            visitExpression(node.right)
+        elseif node.type == "UnaryExpr" then
+            visitExpression(node.operand)
+        elseif node.type == "CallExpr" then
+            for _, argument in ipairs(node.args) do
+                visitExpression(argument)
+            end
+        end
+    end
+
+    visitStatements = function(statements)
+        for _, statement in ipairs(statements) do
+            if statement.type == "FunctionDecl" then
+                local name = statement.resolvedName or statement.name
+                if #(statement.captures or {}) > 0 then
+                    if statement.recursive then
+                        error("PS1Transpiler Error: recursive functions with captured outer locals are not supported")
+                    end
+                    statement.closureId = #closures + 1
+                    table.insert(closures, statement)
+                    capturedFunctionNames[name] = true
+                else
+                    functionNames[name] = true
+                end
+                visitStatements(statement.body)
+            elseif statement.type == "IfStmt" then
+                visitExpression(statement.condition)
+                visitStatements(statement.body)
+                for _, elseifNode in ipairs(statement.elseifs or {}) do
+                    visitExpression(elseifNode.condition)
+                    visitStatements(elseifNode.body)
+                end
+                if statement.elseBody then
+                    visitStatements(statement.elseBody)
+                end
+            elseif
+                statement.type == "NumericForStmt"
+                or statement.type == "GenericForStmt"
+                or statement.type == "WhileStmt"
+                or statement.type == "RepeatStmt"
+            then
+                visitExpression(statement.startValue)
+                visitExpression(statement.endValue)
+                visitExpression(statement.stepValue)
+                visitExpression(statement.iterator)
+                visitExpression(statement.condition)
+                visitStatements(statement.body)
+            elseif statement.type == "DoStmt" then
+                visitStatements(statement.body)
+            else
+                visitExpression(statement.init or statement.value or statement.expr)
+            end
+        end
+    end
+
+    visitStatements(program.body)
+    return closures, functionNames, capturedFunctionNames
 end
 
 function PS1Transpiler.new()
@@ -86,10 +171,15 @@ end
 
 function PS1Transpiler:translate(luaAST)
     assert(luaAST and luaAST.type == "Program", "PS1Transpiler expects a Program AST")
+    ScopeResolver.resolve(luaAST)
+    local closures, functionNames, capturedFunctionNames = collectMetadata(luaAST)
     return {
         type = "PS1Script",
         program = luaAST,
         coroutineWorkers = self:collectCoroutineWorkers(luaAST),
+        closures = closures,
+        functionNames = functionNames,
+        capturedFunctionNames = capturedFunctionNames,
     }
 end
 
@@ -97,7 +187,14 @@ local Generator = {}
 Generator.__index = Generator
 
 function Generator.new(targetAST)
-    return setmetatable({ workers = targetAST.coroutineWorkers }, Generator)
+    return setmetatable({
+        workers = targetAST.coroutineWorkers,
+        closures = targetAST.closures,
+        functionNames = targetAST.functionNames,
+        capturedFunctionNames = targetAST.capturedFunctionNames,
+        loopId = 0,
+        loopDepth = 0,
+    }, Generator)
 end
 
 function Generator:command(node)
@@ -108,8 +205,18 @@ function Generator:command(node)
     for _, argument in ipairs(node.args) do
         table.insert(arguments, self:expression(argument))
     end
-    local name = node.callee == "print" and "Write-Output" or node.callee
-    return name .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
+    if node.callee == "print" then
+        return "Write-Output" .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
+    end
+    local callee = node.resolvedCallee or node.callee
+    if self.capturedFunctionNames[callee] then
+        return "__luash_call $" .. callee .. " @(" .. table.concat(arguments, ", ") .. ")"
+    elseif node.calleeKind == "function" or self.functionNames[callee] then
+        return callee .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
+    elseif node.calleeIsLocal or callee:find("^__luash_local_") then
+        return "__luash_call $" .. callee .. " @(" .. table.concat(arguments, ", ") .. ")"
+    end
+    return callee .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
 end
 
 function Generator:expression(node)
@@ -126,9 +233,17 @@ function Generator:expression(node)
         if node.name:find("%.") then
             error("PS1Transpiler Error: dotted values are supported only as calls")
         end
-        return "$" .. node.name
+        local name = node.resolvedName or node.name
+        if self.capturedFunctionNames[name] then
+            return "$" .. name
+        elseif node.bindingKind == "function" or self.functionNames[name] then
+            return psQuote(name)
+        end
+        return "$" .. name
     elseif node.type == "CallExpr" then
         return "$(" .. self:command(node) .. ")"
+    elseif node.type == "FunctionExpr" then
+        return self:closureValue(node)
     elseif node.type == "UnaryExpr" then
         if node.operator == "-" then
             return "(-" .. self:expression(node.operand) .. ")"
@@ -165,6 +280,52 @@ function Generator:expression(node)
     error("PS1Transpiler Error: unsupported expression " .. tostring(node.type))
 end
 
+function Generator:closureValue(node)
+    local captures = {}
+    for _, capture in ipairs(node.captures or {}) do
+        local value
+        if
+            (capture.kind == "function" and not self.capturedFunctionNames[capture.resolvedName])
+            or self.functionNames[capture.resolvedName]
+        then
+            value = psQuote(capture.resolvedName)
+        else
+            value = "$" .. capture.resolvedName
+        end
+        table.insert(captures, psQuote(capture.resolvedName) .. " = " .. value)
+    end
+    return "@{ Function = "
+        .. psQuote("__luash_closure_" .. node.closureId)
+        .. "; Captures = @{ "
+        .. table.concat(captures, "; ")
+        .. " } }"
+end
+
+function Generator:closure(node, level)
+    local output = { indent(level) .. "function __luash_closure_" .. node.closureId .. " {" }
+    local parameters = { "$__luash_closure_context" }
+    for _, parameter in ipairs(node.resolvedParams or node.params) do
+        table.insert(parameters, "$" .. parameter)
+    end
+    table.insert(output, indent(level + 1) .. "param(" .. table.concat(parameters, ", ") .. ")")
+    for _, capture in ipairs(node.captures or {}) do
+        table.insert(
+            output,
+            indent(level + 1)
+                .. "$"
+                .. capture.resolvedName
+                .. " = $__luash_closure_context.Captures["
+                .. psQuote(capture.resolvedName)
+                .. "]"
+        )
+    end
+    for _, bodyStatement in ipairs(node.body) do
+        table.insert(output, self:statement(bodyStatement, level + 1))
+    end
+    table.insert(output, indent(level) .. "}")
+    return table.concat(output, "\n")
+end
+
 function Generator:coroutineWorker(statement, level)
     local output = {
         indent(level) .. "function __luash_coroutine_" .. statement.name .. " {",
@@ -198,7 +359,7 @@ function Generator:coroutineCreate(statement, level)
     local worker = statement.init.args[1].name
     return indent(level)
         .. "$"
-        .. statement.name
+        .. (statement.resolvedName or statement.name)
         .. " = @{ Worker = "
         .. psQuote(worker)
         .. "; State = 0; Dead = $false }"
@@ -227,10 +388,18 @@ function Generator:statement(statement, level)
         if self.workers[statement.name] then
             return self:coroutineWorker(statement, level)
         end
-        local output = { indent(level) .. "function " .. statement.name .. " {" }
-        if #statement.params > 0 then
+        if statement.closureId then
+            return indent(level)
+                .. "$"
+                .. (statement.resolvedName or statement.name)
+                .. " = "
+                .. self:closureValue(statement)
+        end
+        local output = { indent(level) .. "function " .. (statement.resolvedName or statement.name) .. " {" }
+        local resolvedParams = statement.resolvedParams or statement.params
+        if #resolvedParams > 0 then
             local params = {}
-            for _, parameter in ipairs(statement.params) do
+            for _, parameter in ipairs(resolvedParams) do
                 table.insert(params, "$" .. parameter)
             end
             table.insert(output, indent(level + 1) .. "param(" .. table.concat(params, ", ") .. ")")
@@ -244,14 +413,30 @@ function Generator:statement(statement, level)
         if isCall(statement.init, "coroutine.create") then
             return self:coroutineCreate(statement, level)
         elseif isCall(statement.init, "coroutine.resume") then
-            return self:coroutineResume({ statement.name }, statement.init, level)
+            return self:coroutineResume({ statement.resolvedName or statement.name }, statement.init, level)
         end
-        return indent(level) .. "$" .. statement.name .. " = " .. self:expression(statement.init)
+        local name = statement.resolvedName or statement.name
+        local prefix = statement.type == "AssignmentStmt"
+                and not statement.bindingIsLocal
+                and statement.functionDepth > 0
+                and "$script:"
+            or "$"
+        local output = indent(level) .. prefix .. name .. " = " .. self:expression(statement.init)
+        if statement.isCapturedAssignment then
+            output = output
+                .. "\n"
+                .. indent(level)
+                .. "$__luash_closure_context.Captures["
+                .. psQuote(name)
+                .. "] = $"
+                .. name
+        end
+        return output
     elseif statement.type == "MultiLocalVarDecl" or statement.type == "MultiAssignmentStmt" then
         if not isCall(statement.init, "coroutine.resume") then
             error("PS1Transpiler Error: multiple assignment is supported only for coroutine.resume")
         end
-        return self:coroutineResume(statement.names, statement.init, level)
+        return self:coroutineResume(statement.resolvedNames or statement.names, statement.init, level)
     elseif statement.type == "IfStmt" then
         local output = { indent(level) .. "if (" .. self:expression(statement.condition) .. ") {" }
         for _, bodyStatement in ipairs(statement.body) do
@@ -271,6 +456,134 @@ function Generator:statement(statement, level)
         end
         table.insert(output, indent(level) .. "}")
         return table.concat(output, "\n")
+    elseif statement.type == "WhileStmt" then
+        local output = { indent(level) .. "while (" .. self:expression(statement.condition) .. ") {" }
+        self.loopDepth = self.loopDepth + 1
+        for _, bodyStatement in ipairs(statement.body) do
+            table.insert(output, self:statement(bodyStatement, level + 1))
+        end
+        self.loopDepth = self.loopDepth - 1
+        table.insert(output, indent(level) .. "}")
+        return table.concat(output, "\n")
+    elseif statement.type == "RepeatStmt" then
+        local output = { indent(level) .. "do {" }
+        self.loopDepth = self.loopDepth + 1
+        for _, bodyStatement in ipairs(statement.body) do
+            table.insert(output, self:statement(bodyStatement, level + 1))
+        end
+        self.loopDepth = self.loopDepth - 1
+        table.insert(output, indent(level) .. "} until (" .. self:expression(statement.condition) .. ")")
+        return table.concat(output, "\n")
+    elseif statement.type == "NumericForStmt" then
+        self.loopId = self.loopId + 1
+        local id = self.loopId
+        local valueName = "__luash_for_value_" .. id
+        local limitName = "__luash_for_limit_" .. id
+        local stepName = "__luash_for_step_" .. id
+        local variableName = statement.resolvedName or statement.name
+        local output = {
+            indent(level) .. "$" .. valueName .. " = " .. self:expression(statement.startValue),
+            indent(level) .. "$" .. limitName .. " = " .. self:expression(statement.endValue),
+            indent(level) .. "$" .. stepName .. " = " .. self:expression(statement.stepValue),
+            indent(level)
+                .. "while ((($"
+                .. stepName
+                .. " -gt 0) -and ($"
+                .. valueName
+                .. " -le $"
+                .. limitName
+                .. ")) -or (($"
+                .. stepName
+                .. " -le 0) -and ($"
+                .. valueName
+                .. " -ge $"
+                .. limitName
+                .. "))) {",
+            indent(level + 1) .. "$" .. variableName .. " = $" .. valueName,
+        }
+        self.loopDepth = self.loopDepth + 1
+        for _, bodyStatement in ipairs(statement.body) do
+            table.insert(output, self:statement(bodyStatement, level + 1))
+        end
+        self.loopDepth = self.loopDepth - 1
+        table.insert(output, indent(level + 1) .. "$" .. valueName .. " += $" .. stepName)
+        table.insert(output, indent(level) .. "}")
+        return table.concat(output, "\n")
+    elseif statement.type == "GenericForStmt" then
+        local iterator = statement.iterator
+        if
+            iterator.type ~= "CallExpr"
+            or (iterator.callee ~= "pairs" and iterator.callee ~= "ipairs")
+            or #iterator.args ~= 1
+            or iterator.args[1].type ~= "Identifier"
+        then
+            error("PS1Transpiler Error: generic for currently supports pairs(identifier) or ipairs(identifier)")
+        end
+        self.loopId = self.loopId + 1
+        local itemName = "__luash_for_item_" .. self.loopId
+        local collectionName = "__luash_for_collection_" .. self.loopId
+        local collection = "$" .. collectionName
+        local names = statement.resolvedNames or statement.names
+        local output = {
+            indent(level) .. collection .. " = " .. self:expression(iterator.args[1]),
+        }
+        if iterator.callee == "ipairs" then
+            local indexName = "__luash_for_index_" .. self.loopId
+            table.insert(
+                output,
+                indent(level)
+                    .. "for ($"
+                    .. indexName
+                    .. " = 0; $"
+                    .. indexName
+                    .. " -lt "
+                    .. collection
+                    .. ".Count; $"
+                    .. indexName
+                    .. "++) {"
+            )
+            if names[1] then
+                table.insert(output, indent(level + 1) .. "$" .. names[1] .. " = $" .. indexName .. " + 1")
+            end
+            if names[2] then
+                table.insert(
+                    output,
+                    indent(level + 1) .. "$" .. names[2] .. " = " .. collection .. "[$" .. indexName .. "]"
+                )
+            end
+        else
+            table.insert(
+                output,
+                indent(level) .. "foreach ($" .. itemName .. " in " .. collection .. ".GetEnumerator()) {"
+            )
+            if names[1] then
+                table.insert(output, indent(level + 1) .. "$" .. names[1] .. " = $" .. itemName .. ".Key")
+            end
+            if names[2] then
+                table.insert(output, indent(level + 1) .. "$" .. names[2] .. " = $" .. itemName .. ".Value")
+            end
+        end
+        for index = 3, #names do
+            table.insert(output, indent(level + 1) .. "$" .. names[index] .. " = $null")
+        end
+        self.loopDepth = self.loopDepth + 1
+        for _, bodyStatement in ipairs(statement.body) do
+            table.insert(output, self:statement(bodyStatement, level + 1))
+        end
+        self.loopDepth = self.loopDepth - 1
+        table.insert(output, indent(level) .. "}")
+        return table.concat(output, "\n")
+    elseif statement.type == "DoStmt" then
+        local output = {}
+        for _, bodyStatement in ipairs(statement.body) do
+            table.insert(output, self:statement(bodyStatement, level))
+        end
+        return table.concat(output, "\n")
+    elseif statement.type == "BreakStmt" then
+        if self.loopDepth == 0 then
+            error("PS1Transpiler Error: break must be inside a loop")
+        end
+        return indent(level) .. "break"
     elseif statement.type == "ReturnStmt" then
         return indent(level) .. "return " .. self:expression(statement.value)
     elseif statement.type == "ExprStmt" then
@@ -284,7 +597,20 @@ function Generator:statement(statement, level)
 end
 
 function Generator:generate(program)
-    local output = {}
+    local output = {
+        [=[function __luash_call {
+    param($Callable, [object[]] $Arguments)
+    if ($Callable -is [hashtable] -and $Callable.Function) {
+        return & $Callable.Function $Callable @Arguments
+    }
+    return & $Callable @Arguments
+}]=],
+        "",
+    }
+    for _, closure in ipairs(self.closures) do
+        table.insert(output, self:closure(closure, 0))
+        table.insert(output, "")
+    end
     for _, statement in ipairs(program.body) do
         table.insert(output, self:statement(statement, 0))
     end

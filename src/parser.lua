@@ -100,6 +100,30 @@ function Parser:parseCall(callee)
     return { type = "CallExpr", callee = callee, args = arguments }
 end
 
+function Parser:parseParameterList()
+    self:expect("OPERATOR", "(")
+    local params = {}
+    if self:peek().value ~= ")" then
+        repeat
+            table.insert(params, self:expect("IDENTIFIER").value)
+            if self:peek().value ~= "," then
+                break
+            end
+            self:advance()
+        until false
+    end
+    self:expect("OPERATOR", ")")
+    return params
+end
+
+function Parser:parseFunctionExpression()
+    self:expect("KEYWORD", "function")
+    local params = self:parseParameterList()
+    local body = self:parseBlock({ "end" })
+    self:expect("KEYWORD", "end")
+    return { type = "FunctionExpr", params = params, body = body }
+end
+
 function Parser:parsePrimary()
     local token = self:peek()
     if not token then
@@ -115,6 +139,8 @@ function Parser:parsePrimary()
     elseif token.type == "KEYWORD" and token.value == "nil" then
         self:advance()
         return { type = "Literal", value = nil }
+    elseif token.type == "KEYWORD" and token.value == "function" then
+        return self:parseFunctionExpression()
     elseif token.type == "IDENTIFIER" then
         local name = self:advance().value
         while self:peek() and self:peek().value == "." do
@@ -182,24 +208,71 @@ function Parser:parseIfStatement()
     return statement
 end
 
+function Parser:parseWhileStatement()
+    self:expect("KEYWORD", "while")
+    local condition = self:parseExpression()
+    self:expect("KEYWORD", "do")
+    local body = self:parseBlock({ "end" })
+    self:expect("KEYWORD", "end")
+    return { type = "WhileStmt", condition = condition, body = body }
+end
+
+function Parser:parseRepeatStatement()
+    self:expect("KEYWORD", "repeat")
+    local body = self:parseBlock({ "until" })
+    self:expect("KEYWORD", "until")
+    return { type = "RepeatStmt", body = body, condition = self:parseExpression() }
+end
+
+function Parser:parseDoStatement()
+    self:expect("KEYWORD", "do")
+    local body = self:parseBlock({ "end" })
+    self:expect("KEYWORD", "end")
+    return { type = "DoStmt", body = body }
+end
+
 function Parser:parseFunctionDecl(isLocal)
     self:expect("KEYWORD", "function")
     local name = self:expect("IDENTIFIER").value
-    self:expect("OPERATOR", "(")
-    local params = {}
-    if self:peek().value ~= ")" then
-        repeat
-            table.insert(params, self:expect("IDENTIFIER").value)
-            if self:peek().value ~= "," then
-                break
-            end
-            self:advance()
-        until false
-    end
-    self:expect("OPERATOR", ")")
+    local params = self:parseParameterList()
     local body = self:parseBlock({ "end" })
     self:expect("KEYWORD", "end")
     return { type = "FunctionDecl", name = name, params = params, body = body, isLocal = isLocal }
+end
+
+function Parser:parseForStatement()
+    self:expect("KEYWORD", "for")
+    local firstName = self:expect("IDENTIFIER").value
+    if self:peek().value == "=" then
+        self:advance()
+        local startValue = self:parseExpression()
+        self:expect("OPERATOR", ",")
+        local endValue = self:parseExpression()
+        local stepValue = { type = "Literal", value = 1 }
+        if self:peek().value == "," then
+            self:advance()
+            stepValue = self:parseExpression()
+        end
+        self:expect("KEYWORD", "do")
+        local body = self:parseBlock({ "end" })
+        self:expect("KEYWORD", "end")
+        return {
+            type = "NumericForStmt",
+            name = firstName,
+            startValue = startValue,
+            endValue = endValue,
+            stepValue = stepValue,
+            body = body,
+        }
+    end
+
+    local names = self:parseNameList(firstName)
+    self:expect("KEYWORD", "in")
+    local iterator = self:parseExpression()
+    self:expect("KEYWORD", "do")
+    local body = self:parseBlock({ "end" })
+    self:expect("KEYWORD", "end")
+    return { type = "GenericForStmt", names = names, iterator = iterator, body = body }
 end
 
 function Parser:parseStatement()
@@ -215,8 +288,11 @@ function Parser:parseStatement()
             return self:parseFunctionDecl(true)
         end
         local names = self:parseNameList(self:expect("IDENTIFIER").value)
-        self:expect("OPERATOR", "=")
-        local init = self:parseExpression()
+        local init = { type = "Literal", value = nil }
+        if self:peek().value == "=" then
+            self:advance()
+            init = self:parseExpression()
+        end
         if #names == 1 then
             return { type = "LocalVarDecl", name = names[1], init = init }
         end
@@ -225,8 +301,36 @@ function Parser:parseStatement()
         return self:parseFunctionDecl(false)
     elseif token.type == "KEYWORD" and token.value == "if" then
         return self:parseIfStatement()
+    elseif token.type == "KEYWORD" and token.value == "while" then
+        return self:parseWhileStatement()
+    elseif token.type == "KEYWORD" and token.value == "repeat" then
+        return self:parseRepeatStatement()
+    elseif token.type == "KEYWORD" and token.value == "for" then
+        return self:parseForStatement()
+    elseif token.type == "KEYWORD" and token.value == "do" then
+        return self:parseDoStatement()
+    elseif token.type == "KEYWORD" and token.value == "break" then
+        self:advance()
+        return { type = "BreakStmt" }
     elseif token.type == "KEYWORD" and token.value == "return" then
         self:advance()
+        local nextToken = self:peek()
+        if
+            not nextToken
+            or nextToken.type == "EOF"
+            or (nextToken.type == "OPERATOR" and nextToken.value == ";")
+            or (
+                nextToken.type == "KEYWORD"
+                and (
+                    nextToken.value == "end"
+                    or nextToken.value == "else"
+                    or nextToken.value == "elseif"
+                    or nextToken.value == "until"
+                )
+            )
+        then
+            return { type = "ReturnStmt", value = { type = "Literal", value = nil } }
+        end
         return { type = "ReturnStmt", value = self:parseExpression() }
     elseif token.type == "IDENTIFIER" then
         local nextToken = self:peek(1)

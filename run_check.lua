@@ -8,6 +8,7 @@ local FILES = {
     "src/cli.lua",
     "src/lexer.lua",
     "src/parser.lua",
+    "src/scope_resolver.lua",
     "src/ITranspiler.lua",
     "src/bash_transpiler.lua",
     "src/ps1_transpiler.lua",

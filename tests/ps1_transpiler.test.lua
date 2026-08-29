@@ -52,6 +52,19 @@ end]])
         expect(contains(code, "$length = ($name).Length")).toBeTruthy()
         expect(contains(code, "$power = [Math]::Pow(2, 3)")).toBeTruthy()
     end)
+
+    it("emits loops and anonymous closure objects", function()
+        local code = transpile([[local function make(prefix)
+    return function(value) return prefix .. value end
+end
+local greet = make("hello ")
+for i = 1, 2 do print(greet(i)) end
+for key, value in pairs(items) do print(key, value) end]])
+        expect(contains(code, "function __luash_closure_1")).toBeTruthy()
+        expect(contains(code, "Captures = @{")).toBeTruthy()
+        expect(contains(code, "while (")).toBeTruthy()
+        expect(contains(code, ".GetEnumerator()")).toBeTruthy()
+    end)
 end)
 
 lust.report()

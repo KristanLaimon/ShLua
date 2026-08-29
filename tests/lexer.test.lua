@@ -9,7 +9,7 @@ describe("Lexer", function()
     describe("Keywords", function()
         it("tokenizes all Lua keywords", function()
             local source = table.concat({
-                "and break do else elseif end false for function goto if in local nil",
+                "and break do else elseif end false for function if in local nil",
                 "not or repeat return then true until while",
             }, " ")
             local tokens = Lexer.new(source):tokenize()
@@ -19,7 +19,13 @@ describe("Lexer", function()
                     table.insert(keywords, tok.value)
                 end
             end
-            expect(#keywords).toBe(22)
+            expect(#keywords).toBe(21)
+        end)
+
+        it("treats goto as an identifier in Lua 5.1", function()
+            local tokens = Lexer.new("goto = 1"):tokenize()
+            expect(tokens[1].type).toBe("IDENTIFIER")
+            expect(tokens[1].value).toBe("goto")
         end)
 
         it("distinguishes keywords from identifiers", function()
@@ -136,9 +142,8 @@ describe("Lexer", function()
                     table.insert(strs, tok.value)
                 end
             end
-            -- Lexer returns raw string content with escapes preserved
-            expect(strs[1]).toBe("hello\\nworld")
-            expect(strs[2]).toBe("it\\'s")
+            expect(strs[1]).toBe("hello\nworld")
+            expect(strs[2]).toBe("it's")
         end)
 
         it("tokenizes long strings", function()
@@ -168,7 +173,7 @@ describe("Lexer", function()
 
     describe("Operators", function()
         it("tokenizes multi-char operators", function()
-            local source = "== ~= <= >= .. ... // << >> ::"
+            local source = "== ~= <= >= .. ..."
             local tokens = Lexer.new(source):tokenize()
             local ops = {}
             for _, tok in ipairs(tokens) do
@@ -176,11 +181,11 @@ describe("Lexer", function()
                     table.insert(ops, tok.value)
                 end
             end
-            expect(ops).toEqual({ "==", "~=", "<=", ">=", "..", "...", "//", "<<", ">>", "::" })
+            expect(ops).toEqual({ "==", "~=", "<=", ">=", "..", "..." })
         end)
 
         it("tokenizes single-char operators", function()
-            local source = "+ - * / % ^ # & ~ | < > = ( ) { } [ ] ; : , ."
+            local source = "+ - * / % ^ # < > = ( ) { } [ ] ; : , ."
             local tokens = Lexer.new(source):tokenize()
             local ops = {}
             for _, tok in ipairs(tokens) do
@@ -188,7 +193,7 @@ describe("Lexer", function()
                     table.insert(ops, tok.value)
                 end
             end
-            expect(#ops).toBe(23)
+            expect(#ops).toBe(20)
         end)
     end)
 
