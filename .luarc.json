@@ -1,0 +1,36 @@
+{
+    "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+    "Lua": {
+        "runtime": {
+            "version": "Lua 5.1",
+            "path": [
+                "?.lua",
+                "?/init.lua",
+                "src/?.lua",
+                "tests/?.lua"
+            ]
+        },
+        "workspace": {
+            "library": [
+                "tests/Lust.types.lua"
+            ],
+            "checkThirdParty": false
+        },
+        "diagnostics": {
+            "globals": [
+                "describe", "it", "test", "expect", "spyOn", "mock", "lust",
+                "_G", "arg"
+            ],
+            "disable": [
+                "unused-local",
+                "unused-vararg"
+            ]
+        },
+        "format": {
+            "enable": false
+        },
+        "telemetry": {
+            "enable": false
+        }
+    }
+}
