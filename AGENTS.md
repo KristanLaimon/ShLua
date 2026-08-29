@@ -125,7 +125,7 @@ lua run_check.lua  # runs luac -p, StyLua --check, Luacheck, and dist smoke chec
 
 ## Brain Notes
 
-- Store newly discovered implementation quirks as very small Markdown thoughts under `spec/brain/`.
+- Store newly discovered implementation quirks as very small Markdown thoughts under `specs/brain/`.
 - Do not read specification history by default. Consult an existing brain note only when a concrete quirk blocks the
   current task or when investigating a related regression.
 - Read broader historical specs only when absolutely necessary to resolve missing design context.

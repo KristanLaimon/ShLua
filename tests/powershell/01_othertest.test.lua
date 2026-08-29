@@ -15,8 +15,8 @@ else
 end]],
             "ps1"
         )
-        expect(code:find("} elseif (", 1, true) ~= nil).toBeTruthy()
-        expect(code:find("('count=' + $count)", 1, true) ~= nil).toBeTruthy()
+        expect(code:find("} elseif (", 1, true) ~= nil):toBeTruthy()
+        expect(code:find("('count=' + $count)", 1, true) ~= nil):toBeTruthy()
     end)
 end)
 

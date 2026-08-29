@@ -15,8 +15,8 @@ else
 end]],
             "bash"
         )
-        expect(code:find("elif", 1, true) ~= nil).toBeTruthy()
-        expect(code:find("'count='\"${count}\"", 1, true) ~= nil).toBeTruthy()
+        expect(code:find("elif", 1, true) ~= nil):toBeTruthy()
+        expect(code:find("'count='\"${count}\"", 1, true) ~= nil):toBeTruthy()
     end)
 end)
 
