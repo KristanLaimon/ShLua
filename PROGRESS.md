@@ -47,6 +47,8 @@ syntax, control-flow, function, and closure foundation; those library calls rema
 - Block locals receive reserved unique names when the target shell would otherwise leak or dynamically resolve them.
 - Restored both positional CLI input and the existing `-i`/`--input` form.
 - Updated architecture/compatibility docs and added parser, serializer, and real-shell execution coverage.
+- Removed the old target-specific regression directories. Compiler suites remain directly under `tests/`; numbered
+  dependency-free source-script cases live under `tests/scripts/`.
 
 ## Validation state
 
@@ -54,7 +56,16 @@ syntax, control-flow, function, and closure foundation; those library calls rema
 - Generated Phase 1–3 fixtures execute successfully under installed Bash and Windows PowerShell, including lexical
   shadowing, all new loop forms used by the fixture, anonymous/named captures, and ordinary recursion.
 - `lua run_build.lua`: passed.
-- `lua run_tests.lua`: 11 test files passed.
+- `lua run_tests.lua`: 15 test files passed (7 compiler/integration suites and 8 numbered script cases).
 - `lua run_check.lua`: build, `luac -p`, StyLua, Luacheck, bundled CLI, and bundled API checks passed.
 - No separate Lua 5.1 or LuaJIT executable was installed, so validation used the configured `lua` runtime plus the
   repository's Lua51 StyLua and Luacheck checks.
+
+## Script test layout
+
+- The former `tests/bash/` and `tests/powershell/` regression directories were removed.
+- Existing compiler suites retain their original flat names under `tests/`.
+- `tests/scripts/00_minimal.test.lua` through `07_complex.test.lua` exercise dependency-free generated programs in
+  increasing complexity.
+- Script cases write generated `.sh` and `.ps1` files into `tests/scripts/`. `run_tests.lua` deletes the exact known
+  artifacts after all cases run, including after ordinary test failures; `.gitignore` protects interrupted runs.

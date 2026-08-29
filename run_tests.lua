@@ -25,6 +25,17 @@ local function runTestFile(filepath)
     end
 end
 
+local scriptTestFiles = {
+    "tests/scripts/00_minimal.test.lua",
+    "tests/scripts/01_variables.test.lua",
+    "tests/scripts/02_conditionals.test.lua",
+    "tests/scripts/03_loops.test.lua",
+    "tests/scripts/04_functions.test.lua",
+    "tests/scripts/05_closures.test.lua",
+    "tests/scripts/06_coroutines.test.lua",
+    "tests/scripts/07_complex.test.lua",
+}
+
 local testFiles = {
     "tests/lexer.test.lua",
     "tests/parser.test.lua",
@@ -33,11 +44,19 @@ local testFiles = {
     "tests/coroutine.test.lua",
     "tests/integration.test.lua",
     "tests/dist.test.lua",
-    "tests/bash/00_goodName.test.lua",
-    "tests/bash/01_othertest.test.lua",
-    "tests/powershell/00_goodName.test.lua",
-    "tests/powershell/01_othertest.test.lua",
 }
+
+for _, filepath in ipairs(scriptTestFiles) do
+    table.insert(testFiles, filepath)
+end
+
+local function cleanupGeneratedScripts()
+    for _, filepath in ipairs(scriptTestFiles) do
+        local basePath = filepath:gsub("%.test%.lua$", "")
+        os.remove(basePath .. ".sh")
+        os.remove(basePath .. ".ps1")
+    end
+end
 
 print("=== Luash Test Suite ===\n")
 
@@ -54,6 +73,8 @@ for _, filepath in ipairs(testFiles) do
         table.insert(failedTests, { file = filepath, output = output })
     end
 end
+
+cleanupGeneratedScripts()
 
 print()
 print("=== Test Summary ===")

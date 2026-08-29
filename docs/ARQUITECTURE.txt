@@ -133,8 +133,14 @@ uses only the Lua standard library and must not read modules from the repository
 
 ## 9. Verification architecture
 
-Tests cover lexer/parser behavior, both serializers, complex programs, coroutine validation and state transitions,
-real Bash and PowerShell execution when available, and isolated use of the bundled module and CLI. The release gate is:
+Compiler tests remain directly under `tests/`. Numbered dependency-free Lua script cases live under `tests/scripts/`
+as `NN_<testName>.test.lua`, progressing from minimal programs to combined complex programs. Each script case writes
+its generated Bash and PowerShell files beside the test, executes installed target shells, and leaves cleanup to
+`run_tests.lua`, which removes only those generated `.sh` and `.ps1` artifacts after the complete suite.
+
+Tests cover lexer/parser behavior, both serializers, progressively complex source programs, coroutine validation and
+state transitions, real Bash and PowerShell execution when available, and isolated use of the bundled module and CLI.
+The release gate is:
 
 ```
 lua run_build.lua

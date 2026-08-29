@@ -60,7 +60,8 @@ lua main.lua -i <input.lua> [-o <output>] [-t bash|ps1|all] [-v] [-a]
 
 ## Testing
 - Framework: `tests/Lust.lua` (zero-dependency, injects globals via `lust.injectGlobals()`)
-- Test files: `tests/*.test.lua`, `tests/bash/*.test.lua`, `tests/powershell/*.test.lua`
+- Compiler test files: `tests/*.test.lua`
+- Dependency-free script cases: `tests/scripts/NN_<testName>.test.lua`, ordered from minimal to complex
 - Run: `lua tests/<testfile>.test.lua`
 
 ## Key Conventions

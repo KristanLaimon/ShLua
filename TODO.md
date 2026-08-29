@@ -31,3 +31,4 @@
 - Read `TODO.md`, `PROGRESS.md`, and the Phase 4 library-related Lua 5.1 manual sections.
 - Define the dependency-free Bash standard-library module contract under `src/stdlib/bash/`.
 - Implement and execute focused Bash math/string cases before expanding `hard_test.lua` coverage.
+- Add dependency-free script cases as `tests/scripts/NN_<testName>.test.lua`, ordered from simplest to most complex.
