@@ -286,15 +286,15 @@ function Generator:command(node)
         table.insert(arguments, self:expression(argument))
     end
     if node.callee == "print" then
-        return "__luash_print" .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
+        return "__shlua_print" .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
     end
     local callee = helper or node.resolvedCallee or node.callee
     if self.capturedFunctionNames[callee] then
-        return "__luash_call $" .. callee .. " @(" .. table.concat(arguments, ", ") .. ")"
+        return "__shlua_call $" .. callee .. " @(" .. table.concat(arguments, ", ") .. ")"
     elseif node.calleeKind == "function" or self.functionNames[callee] then
         return callee .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
-    elseif node.calleeIsLocal or callee:find("^__luash_local_") then
-        return "__luash_call $" .. callee .. " @(" .. table.concat(arguments, ", ") .. ")"
+    elseif node.calleeIsLocal or callee:find("^__shlua_local_") then
+        return "__shlua_call $" .. callee .. " @(" .. table.concat(arguments, ", ") .. ")"
     end
     return callee .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
 end
@@ -325,12 +325,12 @@ function Generator:expression(node)
         end
         return "$" .. name
     elseif node.type == "TableConstructor" then
-        local expressions = { "$__luash_table_value = __luash_table_new" }
+        local expressions = { "$__shlua_table_value = __shlua_table_new" }
         for _, field in ipairs(node.fields) do
             local present = not (field.value.type == "Literal" and field.value.value == nil)
             table.insert(
                 expressions,
-                "__luash_table_set $__luash_table_value "
+                "__shlua_table_set $__shlua_table_value "
                     .. psQuote(self:tableKeyType(field.key))
                     .. " "
                     .. self:expression(field.key)
@@ -340,10 +340,10 @@ function Generator:expression(node)
                     .. (present and "$true" or "$false")
             )
         end
-        table.insert(expressions, "$__luash_table_value")
+        table.insert(expressions, "$__shlua_table_value")
         return "(& { " .. table.concat(expressions, "; ") .. " })"
     elseif node.type == "IndexExpr" then
-        return "(__luash_table_get "
+        return "(__shlua_table_get "
             .. self:expression(node.table)
             .. " "
             .. psQuote(self:tableKeyType(node.key))
@@ -360,7 +360,7 @@ function Generator:expression(node)
         elseif node.operator == "not" then
             return "(-not " .. self:expression(node.operand) .. ")"
         elseif node.operator == "#" then
-            return "(__luash_length " .. self:expression(node.operand) .. ")"
+            return "(__shlua_length " .. self:expression(node.operand) .. ")"
         end
     elseif node.type == "BinaryExpr" then
         if node.operator == "^" then
@@ -420,15 +420,15 @@ function Generator:closureValue(node)
         table.insert(captures, psQuote(capture.resolvedName) .. " = " .. value)
     end
     return "@{ Function = "
-        .. psQuote("__luash_closure_" .. node.closureId)
+        .. psQuote("__shlua_closure_" .. node.closureId)
         .. "; Captures = @{ "
         .. table.concat(captures, "; ")
         .. " } }"
 end
 
 function Generator:closure(node, level)
-    local output = { indent(level) .. "function __luash_closure_" .. node.closureId .. " {" }
-    local parameters = { "$__luash_closure_context" }
+    local output = { indent(level) .. "function __shlua_closure_" .. node.closureId .. " {" }
+    local parameters = { "$__shlua_closure_context" }
     for _, parameter in ipairs(node.resolvedParams or node.params) do
         table.insert(parameters, "$" .. parameter)
     end
@@ -439,7 +439,7 @@ function Generator:closure(node, level)
             indent(level + 1)
                 .. "$"
                 .. capture.resolvedName
-                .. " = $__luash_closure_context.Captures["
+                .. " = $__shlua_closure_context.Captures["
                 .. psQuote(capture.resolvedName)
                 .. "]"
         )
@@ -453,7 +453,7 @@ end
 
 function Generator:coroutineWorker(statement, level)
     local output = {
-        indent(level) .. "function __luash_coroutine_" .. statement.name .. " {",
+        indent(level) .. "function __shlua_coroutine_" .. statement.name .. " {",
         indent(level + 1) .. "param([hashtable] $__co)",
         indent(level + 1) .. "$__co.State = [int]$__co.State + 1",
         indent(level + 1) .. "switch ($__co.State) {",
@@ -499,9 +499,9 @@ function Generator:coroutineResume(names, call, level)
     end
     local handle = self:expression(call.args[1])
     local output = {
-        indent(level) .. "$__luash_resume = & ('__luash_coroutine_' + " .. handle .. ".Worker) " .. handle,
+        indent(level) .. "$__shlua_resume = & ('__shlua_coroutine_' + " .. handle .. ".Worker) " .. handle,
     }
-    local values = { "$__luash_resume[0]", "$__luash_resume[1]" }
+    local values = { "$__shlua_resume[0]", "$__shlua_resume[1]" }
     for index, name in ipairs(names) do
         table.insert(output, indent(level) .. "$" .. name .. " = " .. values[index])
     end
@@ -551,7 +551,7 @@ function Generator:statement(statement, level)
             output = output
                 .. "\n"
                 .. indent(level)
-                .. "$__luash_closure_context.Captures["
+                .. "$__shlua_closure_context.Captures["
                 .. psQuote(name)
                 .. "] = $"
                 .. name
@@ -565,7 +565,7 @@ function Generator:statement(statement, level)
     elseif statement.type == "TableAssignmentStmt" then
         local present = not (statement.init.type == "Literal" and statement.init.value == nil)
         return indent(level)
-            .. "__luash_table_set "
+            .. "__shlua_table_set "
             .. self:expression(statement.table)
             .. " "
             .. psQuote(self:tableKeyType(statement.key))
@@ -615,9 +615,9 @@ function Generator:statement(statement, level)
     elseif statement.type == "NumericForStmt" then
         self.loopId = self.loopId + 1
         local id = self.loopId
-        local valueName = "__luash_for_value_" .. id
-        local limitName = "__luash_for_limit_" .. id
-        local stepName = "__luash_for_step_" .. id
+        local valueName = "__shlua_for_value_" .. id
+        local limitName = "__shlua_for_limit_" .. id
+        local stepName = "__shlua_for_step_" .. id
         local variableName = statement.resolvedName or statement.name
         local output = {
             indent(level) .. "$" .. valueName .. " = " .. self:expression(statement.startValue),
@@ -657,21 +657,21 @@ function Generator:statement(statement, level)
             error("PS1Transpiler Error: generic for currently supports pairs(table) or ipairs(table)")
         end
         self.loopId = self.loopId + 1
-        local itemName = "__luash_for_item_" .. self.loopId
-        local collectionName = "__luash_for_collection_" .. self.loopId
+        local itemName = "__shlua_for_item_" .. self.loopId
+        local collectionName = "__shlua_for_collection_" .. self.loopId
         local collection = "$" .. collectionName
         local names = statement.resolvedNames or statement.names
         local output = {
             indent(level) .. collection .. " = " .. self:expression(iterator.args[1]),
         }
         if iterator.callee == "ipairs" then
-            local indexName = "__luash_for_index_" .. self.loopId
+            local indexName = "__shlua_for_index_" .. self.loopId
             table.insert(
                 output,
                 indent(level)
                     .. "for ($"
                     .. indexName
-                    .. " = 1; (__luash_table_contains "
+                    .. " = 1; (__shlua_table_contains "
                     .. collection
                     .. " 'n' $"
                     .. indexName
@@ -688,7 +688,7 @@ function Generator:statement(statement, level)
                     indent(level + 1)
                         .. "$"
                         .. names[2]
-                        .. " = __luash_table_get "
+                        .. " = __shlua_table_get "
                         .. collection
                         .. " 'n' $"
                         .. indexName
@@ -746,7 +746,7 @@ function Generator:statement(statement, level)
 end
 
 function Generator:callRuntime()
-    return [=[function __luash_call {
+    return [=[function __shlua_call {
     param($Callable, [object[]] $Arguments)
     if ($Callable -is [hashtable] -and $Callable.Function) {
         return & $Callable.Function $Callable @Arguments
@@ -756,7 +756,7 @@ function Generator:callRuntime()
 end
 
 function Generator:printRuntime()
-    return [=[function __luash_print {
+    return [=[function __shlua_print {
     param([Parameter(ValueFromRemainingArguments = $true)] [object[]] $Values)
     $Rendered = foreach ($Value in $Values) {
         if ($null -eq $Value) { 'nil' }

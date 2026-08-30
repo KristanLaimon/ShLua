@@ -1,16 +1,16 @@
-# Luash Architecture
+# ShLua Architecture
 
 ## 1. Purpose and boundaries
 
-Luash is a dependency-free Lua 5.1-compatible transpiler. It accepts a documented Lua subset and emits Bash 3.2+
+ShLua is a dependency-free Lua 5.1-compatible transpiler. It accepts a documented Lua subset and emits Bash 3.2+
 or PowerShell 3.0+ source. It is a source-to-source compiler, not a Lua interpreter: unsupported syntax is rejected
 instead of being evaluated by the host Lua runtime.
 
 The same compiler is exposed through two entry paths:
 
 ```
-CLI:  main.lua -> Luash.main(args) -> read/compile/write
-API:  require("luash") -> Luash.parse / Luash.transpile / Luash.compile
+CLI:  main.lua -> ShLua.main(args) -> read/compile/write
+API:  require("shlua") -> ShLua.parse / ShLua.transpile / ShLua.compile
 ```
 
 ## 2. Compilation pipeline
@@ -51,16 +51,16 @@ Bash serializer          PowerShell serializer
 .sh source               .ps1 source
 ```
 
-`src/luash.lua` is the composition root. It registers targets, validates their interface contracts, runs the shared
+`src/shlua.lua` is the composition root. It registers targets, validates their interface contracts, runs the shared
 front end once, and invokes targets in deterministic `bash`, then `ps1`, order when `all` is selected. `main.lua` is
-only a location-independent launcher that adds `src/` to `package.path` and delegates to `Luash.main`.
+only a location-independent launcher that adds `src/` to `package.path` and delegates to `ShLua.main`.
 
 ## 3. Module responsibilities
 
 | Module | Responsibility |
 | --- | --- |
 | `main.lua` | Thin executable launcher and exit-code propagation. |
-| `src/luash.lua` | Public API, target registry, composition root, AST dump, and CLI orchestration. |
+| `src/shlua.lua` | Public API, target registry, composition root, AST dump, and CLI orchestration. |
 | `src/cli.lua` | Option parsing plus input/output file operations. |
 | `src/lexer.lua` | Converts source text into tokens with source locations. |
 | `src/parser.lua` | Produces the supported Lua AST using recursive descent and precedence climbing. |
@@ -77,15 +77,15 @@ only a location-independent launcher that adds `src/` to `package.path` and dele
 
 ## 4. Public API
 
-`require("luash")` returns a table with these stable alpha entry points:
+`require("shlua")` returns a table with these stable alpha entry points:
 
-- `Luash.VERSION`: current release identifier.
-- `Luash.parse(source)`: returns the Lua subset AST.
-- `Luash.transpile(source, target)`: returns one target string, or `{ bash, ps1 }` for `all`.
-- `Luash.compile`: alias of `Luash.transpile`.
-- `Luash.main(args)`: runs the CLI workflow and returns an integer exit code.
+- `ShLua.VERSION`: current release identifier.
+- `ShLua.parse(source)`: returns the Lua subset AST.
+- `ShLua.transpile(source, target)`: returns one target string, or `{ bash, ps1 }` for `all`.
+- `ShLua.compile`: alias of `ShLua.transpile`.
+- `ShLua.main(args)`: runs the CLI workflow and returns an integer exit code.
 
-The CLI layer never selects or imports concrete backends. Target registration and ordering remain in `src/luash.lua`.
+The CLI layer never selects or imports concrete backends. Target registration and ordering remain in `src/shlua.lua`.
 
 ## 5. Transpiler contract and target wrappers
 
@@ -153,16 +153,16 @@ Alpha coroutines are compiled generators rather than suspended Lua stacks:
 4. Each resume advances a generated state machine and assigns `success, value`.
 5. A resume after completion returns `false, "cannot resume dead coroutine"`.
 
-Bash stores handle state in generated variables and dispatches through `__luash_coroutine_*` helpers. PowerShell uses
-a hashtable handle and generated worker functions. Names beginning with `__luash_` are reserved for generated runtime
+Bash stores handle state in generated variables and dispatches through `__shlua_coroutine_*` helpers. PowerShell uses
+a hashtable handle and generated worker functions. Names beginning with `__shlua_` are reserved for generated runtime
 internals.
 
 ## 10. Single-file distribution
 
-`run_build.lua` wraps every compiler module in `package.preload`, embeds them in `dist/luash.lua`, and appends a small
-dispatcher. Loading that file through `require("luash")` returns the API; executing it runs the CLI. The generated file
+`run_build.lua` wraps every compiler module in `package.preload`, embeds them in `dist/shlua.lua`, and appends a small
+dispatcher. Loading that file through `require("shlua")` returns the API; executing it runs the CLI. The generated file
 uses only the Lua standard library and must not read modules from the repository at runtime. The same build glues that
-bundle to versioned SRLua 5.1 runtimes, producing `dist/luash.exe` for Windows x64 and `dist/luash` for Linux x64
+bundle to versioned SRLua 5.1 runtimes, producing `dist/shlua.exe` for Windows x64 and `dist/shlua` for Linux x64
 without requiring a compiler or external packager.
 
 ## 11. Verification architecture

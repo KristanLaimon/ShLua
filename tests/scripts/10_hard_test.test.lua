@@ -18,8 +18,8 @@ describe("10 - hard_test end to end", function()
         for _, target in ipairs({ "bash", "ps1" }) do
             local targetResult = result[target]
             expect(targetResult.code:find("require", 1, true) ~= nil).toBeFalsy()
-            expect(targetResult.code:find("__luash_io_write", 1, true) ~= nil).toBeTruthy()
-            expect(targetResult.code:find("__luash_os_clock", 1, true) ~= nil).toBeTruthy()
+            expect(targetResult.code:find("__shlua_io_write", 1, true) ~= nil).toBeTruthy()
+            expect(targetResult.code:find("__shlua_os_clock", 1, true) ~= nil).toBeTruthy()
             if targetResult.executed then
                 expect(targetResult.ok).toBeTruthy()
                 expect(targetResult.output:find("Hello world\n1 2 3 ", 1, true) == 1).toBeTruthy()

@@ -21,7 +21,7 @@ end
 table.sort(values, descending)
 print(table.concat(values, ":"))
 
-local keyed = { name = "Luash", [10] = "number-key", ["10"] = "string-key", false }
+local keyed = { name = "ShLua", [10] = "number-key", ["10"] = "string-key", false }
 local stringKey = "10"
 keyed.extra = "field"
 keyed.name = nil

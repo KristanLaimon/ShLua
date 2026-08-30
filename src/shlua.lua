@@ -3,7 +3,7 @@ local Lexer = require("lexer")
 local Parser = require("parser")
 local TranspilerInterface = require("ITranspiler")
 
-local Luash = { VERSION = "0.1.0-alpha" }
+local ShLua = { VERSION = "0.1.0-alpha" }
 
 local TARGETS = {
     bash = require("bash_transpiler"),
@@ -35,17 +35,17 @@ local function dumpValue(value, level)
     end
 end
 
-function Luash.parse(source)
-    assert(type(source) == "string", "Luash.parse expects source text")
+function ShLua.parse(source)
+    assert(type(source) == "string", "ShLua.parse expects source text")
     return Parser.new(Lexer.new(source):tokenize()):parse()
 end
 
-function Luash.transpile(source, target)
+function ShLua.transpile(source, target)
     target = target or "all"
     if target ~= "all" and not TARGETS[target] then
-        error("Luash Error: target must be 'bash', 'ps1', or 'all'")
+        error("ShLua Error: target must be 'bash', 'ps1', or 'all'")
     end
-    local ast = Luash.parse(source)
+    local ast = ShLua.parse(source)
     if target == "all" then
         local results = {}
         for _, name in ipairs(TARGET_ORDER) do
@@ -58,7 +58,7 @@ function Luash.transpile(source, target)
     return module.Serializer.serialize(module.new():translate(ast))
 end
 
-Luash.compile = Luash.transpile
+ShLua.compile = ShLua.transpile
 
 local function outputPath(basePath, extension)
     if basePath:sub(-#extension) == extension then
@@ -67,7 +67,7 @@ local function outputPath(basePath, extension)
     return basePath:gsub("%.[^./\\]+$", "") .. extension
 end
 
-function Luash.main(rawArgs)
+function ShLua.main(rawArgs)
     local parsed, opts = pcall(CLI.parse, rawArgs or {})
     if not parsed then
         io.stderr:write(tostring(opts) .. "\n")
@@ -81,9 +81,9 @@ function Luash.main(rawArgs)
     local success, failure = pcall(function()
         local source = CLI.readFile(opts.input)
         if opts.verbose then
-            print("[luash] parsing " .. opts.input)
+            print("[shlua] parsing " .. opts.input)
         end
-        local ast = Luash.parse(source)
+        local ast = ShLua.parse(source)
         if opts.dumpAst then
             print("=== LUA AST DUMP ===")
             dumpValue(ast)
@@ -98,7 +98,7 @@ function Luash.main(rawArgs)
                 local path = outputPath(opts.output, module.extension)
                 CLI.writeFile(path, code)
                 if opts.verbose then
-                    print("[luash] wrote " .. path)
+                    print("[shlua] wrote " .. path)
                 end
             else
                 print("\n=================== Output: " .. name:upper() .. " ===================")
@@ -113,4 +113,4 @@ function Luash.main(rawArgs)
     return 0
 end
 
-return Luash
+return ShLua

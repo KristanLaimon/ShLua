@@ -4,7 +4,7 @@
 -- ============================================================================
 
 local CLI = {}
-local NAME = "Luash"
+local NAME = "ShLua"
 local VERSION = "0.1.0-alpha"
 
 function CLI.showHelp()
@@ -99,7 +99,7 @@ function CLI.parse(rawArgs)
     end
 
     if not opts.help and not opts.input then
-        error("CLI Error: Input file missing. Usage: lua luash.lua <input.lua> [OPTIONS]")
+        error("CLI Error: Input file missing. Usage: lua shlua.lua <input.lua> [OPTIONS]")
     end
     if opts.target ~= "bash" and opts.target ~= "ps1" and opts.target ~= "all" then
         error("CLI Error: target must be 'bash', 'ps1', or 'all'")

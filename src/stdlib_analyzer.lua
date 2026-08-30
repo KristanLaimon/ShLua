@@ -67,19 +67,19 @@ function M.analyze(program)
             end
         elseif node.type == "UnaryExpr" then
             if node.operator == "#" then
-                requireHelper(required, "table", "__luash_length")
+                requireHelper(required, "table", "__shlua_length")
             end
             visitExpression(node.operand)
         elseif node.type == "BinaryExpr" then
             visitExpression(node.left)
             visitExpression(node.right)
         elseif node.type == "IndexExpr" then
-            requireHelper(required, "table", "__luash_table_get")
+            requireHelper(required, "table", "__shlua_table_get")
             visitExpression(node.table)
             visitExpression(node.key)
         elseif node.type == "TableConstructor" then
-            requireHelper(required, "table", "__luash_table_new")
-            requireHelper(required, "table", "__luash_table_set")
+            requireHelper(required, "table", "__shlua_table_new")
+            requireHelper(required, "table", "__shlua_table_set")
             for _, field in ipairs(node.fields) do
                 visitExpression(field.key)
                 visitExpression(field.value)
@@ -117,7 +117,7 @@ function M.analyze(program)
             elseif statement.type == "DoStmt" then
                 visitStatements(statement.body)
             elseif statement.type == "TableAssignmentStmt" then
-                requireHelper(required, "table", "__luash_table_set")
+                requireHelper(required, "table", "__shlua_table_set")
                 visitExpression(statement.table)
                 visitExpression(statement.key)
                 visitExpression(statement.init)

@@ -1,9 +1,9 @@
 local M = { name = "base" }
 
 M.functions = {
-    ["tonumber"] = "__luash_tonumber",
-    ["tostring"] = "__luash_tostring",
-    ["type"] = "__luash_type",
+    ["tonumber"] = "__shlua_tonumber",
+    ["tostring"] = "__shlua_tostring",
+    ["type"] = "__shlua_type",
 }
 
 M.unsupported = {
@@ -31,7 +31,7 @@ M.unsupported = {
     ["xpcall"] = "Lua protected calls are not implemented",
 }
 
-M.source = [=[__luash_tostring() {
+M.source = [=[__shlua_tostring() {
     if [ $# -eq 0 ]; then
         printf 'nil\n'
     else
@@ -39,11 +39,11 @@ M.source = [=[__luash_tostring() {
     fi
 }
 
-__luash_tonumber() {
-    local __luash_value="$1"
-    local __luash_base="${2:-10}"
-    if [ "$__luash_base" -ne 10 ]; then
-        LC_ALL=C awk -v value="$__luash_value" -v base="$__luash_base" '
+__shlua_tonumber() {
+    local __shlua_value="$1"
+    local __shlua_base="${2:-10}"
+    if [ "$__shlua_base" -ne 10 ]; then
+        LC_ALL=C awk -v value="$__shlua_value" -v base="$__shlua_base" '
             BEGIN {
                 digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                 value = toupper(value)
@@ -58,23 +58,23 @@ __luash_tonumber() {
         ' </dev/null
         return 0
     fi
-    case "$__luash_value" in
+    case "$__shlua_value" in
         ''|*[!0-9eE+.-]*) return 0 ;;
-        *) printf '%s\n' "$__luash_value" ;;
+        *) printf '%s\n' "$__shlua_value" ;;
     esac
 }
 
-__luash_type() {
-    local __luash_value="$1"
+__shlua_type() {
+    local __shlua_value="$1"
     if [ $# -eq 0 ]; then
         printf 'nil\n'
-    elif [ "$__luash_value" = 'true' ] || [ "$__luash_value" = 'false' ]; then
+    elif [ "$__shlua_value" = 'true' ] || [ "$__shlua_value" = 'false' ]; then
         printf 'boolean\n'
-    elif [[ "$__luash_value" =~ ^[-+]?[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?$ ]]; then
+    elif [[ "$__shlua_value" =~ ^[-+]?[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?$ ]]; then
         printf 'number\n'
-    elif [ -d "$__luash_value" ] && [ -f "$__luash_value/count" ]; then
+    elif [ -d "$__shlua_value" ] && [ -f "$__shlua_value/count" ]; then
         printf 'table\n'
-    elif [[ "$__luash_value" = __luash_closure_* ]] || declare -F "$__luash_value" >/dev/null 2>&1; then
+    elif [[ "$__shlua_value" = __shlua_closure_* ]] || declare -F "$__shlua_value" >/dev/null 2>&1; then
         printf 'function\n'
     else
         printf 'string\n'

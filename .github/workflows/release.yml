@@ -58,16 +58,16 @@ jobs:
               run: lua run_check.lua
 
             - name: Smoke-test the Linux executable
-              run: ./dist/luash --help
+              run: ./dist/shlua --help
 
             - name: Stage release assets
               shell: bash
               run: |
                   mkdir release
-                  cp dist/luash release/luash_linux_x64
-                  cp dist/luash.lua release/luash.lua
-                  cp dist/luash.exe release/luash_win_x64.exe
-                  chmod +x release/luash_linux_x64
+                  cp dist/shlua release/shlua_linux_x64
+                  cp dist/shlua.lua release/shlua.lua
+                  cp dist/shlua.exe release/shlua_win_x64.exe
+                  chmod +x release/shlua_linux_x64
 
             - name: Create release notes from commits
               env:
@@ -92,7 +92,7 @@ jobs:
                   }
 
                   {
-                      echo "# Luash ${GITHUB_REF_NAME}"
+                      echo "# ShLua ${GITHUB_REF_NAME}"
                       echo
                       echo "## Changes"
 
@@ -114,14 +114,14 @@ jobs:
                   GH_TOKEN: ${{ github.token }}
               shell: bash
               run: |
-                  assets=(release/luash_linux_x64 release/luash.lua release/luash_win_x64.exe)
+                  assets=(release/shlua_linux_x64 release/shlua.lua release/shlua_win_x64.exe)
 
                   if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
                       gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber
-                      gh release edit "${GITHUB_REF_NAME}" --draft --title "Luash ${GITHUB_REF_NAME}" --notes-file release-notes.md
+                      gh release edit "${GITHUB_REF_NAME}" --draft --title "ShLua ${GITHUB_REF_NAME}" --notes-file release-notes.md
                   else
                       gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \
                           --draft \
-                          --title "Luash ${GITHUB_REF_NAME}" \
+                          --title "ShLua ${GITHUB_REF_NAME}" \
                           --notes-file release-notes.md
                   fi

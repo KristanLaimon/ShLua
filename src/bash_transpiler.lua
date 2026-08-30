@@ -378,11 +378,11 @@ function Generator:command(node)
     local callee = helper or node.resolvedCallee or node.callee
     local suffix = #arguments > 0 and " " .. table.concat(arguments, " ") or ""
     if self.capturedFunctionNames[callee] then
-        return "__luash_call " .. self:identifierValue(callee, node.calleeKind) .. suffix
+        return "__shlua_call " .. self:identifierValue(callee, node.calleeKind) .. suffix
     elseif node.calleeKind == "function" or self.functionNames[callee] then
         return callee .. suffix
-    elseif node.calleeIsLocal or callee:find("^__luash_local_") then
-        return "__luash_call " .. self:identifierValue(callee, node.calleeKind) .. suffix
+    elseif node.calleeIsLocal or callee:find("^__shlua_local_") then
+        return "__shlua_call " .. self:identifierValue(callee, node.calleeKind) .. suffix
     end
     return callee .. suffix
 end
@@ -416,9 +416,9 @@ function Generator:expression(node)
             table.insert(arguments, shellQuote(present and "1" or "0"))
         end
         local suffix = #arguments > 0 and " " .. table.concat(arguments, " ") or ""
-        return '"$(__luash_table_new' .. suffix .. ')"'
+        return '"$(__shlua_table_new' .. suffix .. ')"'
     elseif node.type == "IndexExpr" then
-        return '"$(__luash_table_get '
+        return '"$(__shlua_table_get '
             .. self:expression(node.table)
             .. " "
             .. shellQuote(self:tableKeyType(node.key))
@@ -442,9 +442,9 @@ function Generator:expression(node)
             if node.operand.type == "Literal" and type(node.operand.value) == "number" then
                 return tostring(-node.operand.value)
             end
-            return '"$(__luash_arithmetic 0 ' .. shellQuote("-") .. " " .. self:expression(node.operand) .. ')"'
+            return '"$(__shlua_arithmetic 0 ' .. shellQuote("-") .. " " .. self:expression(node.operand) .. ')"'
         elseif node.operator == "#" then
-            return '"$(__luash_length ' .. self:expression(node.operand) .. ')"'
+            return '"$(__shlua_length ' .. self:expression(node.operand) .. ')"'
         elseif node.operator == "not" then
             return "$(if " .. self:condition(node) .. "; then printf true; else printf false; fi)"
         end
@@ -475,7 +475,7 @@ function Generator:expression(node)
             or node.operator == "%"
             or node.operator == "^"
         then
-            return '"$(__luash_arithmetic '
+            return '"$(__shlua_arithmetic '
                 .. self:expression(node.left)
                 .. " "
                 .. shellQuote(node.operator)
@@ -489,9 +489,9 @@ function Generator:expression(node)
 end
 
 function Generator:closureValue(node)
-    local value = '"__luash_closure_' .. node.closureId
+    local value = '"__shlua_closure_' .. node.closureId
     for _, capture in ipairs(node.captures or {}) do
-        value = value .. "${__luash_closure_separator}"
+        value = value .. "${__shlua_closure_separator}"
         if
             (capture.kind == "function" and not self.capturedFunctionNames[capture.resolvedName])
             or self.functionNames[capture.resolvedName]
@@ -505,7 +505,7 @@ function Generator:closureValue(node)
 end
 
 function Generator:closure(node, level)
-    local output = { indent(level) .. "__luash_closure_" .. node.closureId .. "() {" }
+    local output = { indent(level) .. "__shlua_closure_" .. node.closureId .. "() {" }
     for _, capture in ipairs(node.captures or {}) do
         table.insert(output, indent(level + 1) .. "local " .. capture.resolvedName .. '="$1"')
         table.insert(output, indent(level + 1) .. "shift")
@@ -522,7 +522,7 @@ function Generator:closure(node, level)
 end
 
 function Generator:coroutineWorker(statement, level)
-    local output = { indent(level) .. "__luash_coroutine_" .. statement.name .. "() {" }
+    local output = { indent(level) .. "__shlua_coroutine_" .. statement.name .. "() {" }
     table.insert(output, indent(level + 1) .. 'local __handle="$1"')
     table.insert(output, indent(level + 1) .. 'local __state_var="${__handle}__state"')
     table.insert(output, indent(level + 1) .. 'local __state="${!__state_var}"')
@@ -537,8 +537,8 @@ function Generator:coroutineWorker(statement, level)
             state = state + 1
             local value = bodyStatement.expr.args[1] or { type = "Literal", value = nil }
             table.insert(output, indent(level + 2) .. state .. ")")
-            table.insert(output, indent(level + 3) .. "__luash_coroutine_ok='true'")
-            table.insert(output, indent(level + 3) .. "__luash_coroutine_value=" .. self:expression(value))
+            table.insert(output, indent(level + 3) .. "__shlua_coroutine_ok='true'")
+            table.insert(output, indent(level + 3) .. "__shlua_coroutine_value=" .. self:expression(value))
             table.insert(output, indent(level + 3) .. ";;")
         else
             returnValue = bodyStatement.value
@@ -547,12 +547,12 @@ function Generator:coroutineWorker(statement, level)
 
     state = state + 1
     table.insert(output, indent(level + 2) .. state .. ")")
-    table.insert(output, indent(level + 3) .. "__luash_coroutine_ok='true'")
-    table.insert(output, indent(level + 3) .. "__luash_coroutine_value=" .. self:expression(returnValue))
+    table.insert(output, indent(level + 3) .. "__shlua_coroutine_ok='true'")
+    table.insert(output, indent(level + 3) .. "__shlua_coroutine_value=" .. self:expression(returnValue))
     table.insert(output, indent(level + 3) .. ";;")
     table.insert(output, indent(level + 2) .. "*)")
-    table.insert(output, indent(level + 3) .. "__luash_coroutine_ok='false'")
-    table.insert(output, indent(level + 3) .. "__luash_coroutine_value='cannot resume dead coroutine'")
+    table.insert(output, indent(level + 3) .. "__shlua_coroutine_ok='false'")
+    table.insert(output, indent(level + 3) .. "__shlua_coroutine_value='cannot resume dead coroutine'")
     table.insert(output, indent(level + 3) .. ";;")
     table.insert(output, indent(level + 1) .. "esac")
     table.insert(output, indent(level) .. "}")
@@ -578,8 +578,8 @@ function Generator:coroutineResume(names, call, level, inFunction, isLocal)
     if #names > 2 then
         error("Coroutine Error: alpha resume returns only success and one value")
     end
-    local output = { indent(level) .. "__luash_coroutine_resume " .. self:expression(call.args[1]) }
-    local values = { '"$__luash_coroutine_ok"', '"$__luash_coroutine_value"' }
+    local output = { indent(level) .. "__shlua_coroutine_resume " .. self:expression(call.args[1]) }
+    local values = { '"$__shlua_coroutine_ok"', '"$__shlua_coroutine_value"' }
     for index, name in ipairs(names) do
         local modifier = inFunction and isLocal and "local " or ""
         table.insert(output, indent(level) .. modifier .. name .. "=" .. values[index])
@@ -645,7 +645,7 @@ function Generator:statement(statement, level, inFunction)
     elseif statement.type == "TableAssignmentStmt" then
         local present = not (statement.init.type == "Literal" and statement.init.value == nil)
         return indent(level)
-            .. "__luash_table_set "
+            .. "__shlua_table_set "
             .. self:expression(statement.table)
             .. " "
             .. shellQuote(self:tableKeyType(statement.key))
@@ -698,9 +698,9 @@ function Generator:statement(statement, level, inFunction)
     elseif statement.type == "NumericForStmt" then
         self.loopId = self.loopId + 1
         local id = self.loopId
-        local valueName = "__luash_for_value_" .. id
-        local limitName = "__luash_for_limit_" .. id
-        local stepName = "__luash_for_step_" .. id
+        local valueName = "__shlua_for_value_" .. id
+        local limitName = "__shlua_for_limit_" .. id
+        local stepName = "__shlua_for_step_" .. id
         local variableName = statement.resolvedName or statement.name
         local modifier = inFunction and "local " or ""
         local output = {
@@ -741,9 +741,9 @@ function Generator:statement(statement, level, inFunction)
             error("BashTranspiler Error: generic for currently supports pairs(table) or ipairs(table)")
         end
         self.loopId = self.loopId + 1
-        local indexName = "__luash_for_index_" .. self.loopId
-        local collectionName = "__luash_for_collection_" .. self.loopId
-        local countName = "__luash_for_count_" .. self.loopId
+        local indexName = "__shlua_for_index_" .. self.loopId
+        local collectionName = "__shlua_for_collection_" .. self.loopId
+        local countName = "__shlua_for_count_" .. self.loopId
         local names = statement.resolvedNames or statement.names
         local modifier = inFunction and "local " or ""
         local output = { indent(level) .. modifier .. collectionName .. "=" .. self:expression(iterator.args[1]) }
@@ -751,7 +751,7 @@ function Generator:statement(statement, level, inFunction)
             table.insert(output, indent(level) .. modifier .. indexName .. "=1")
             table.insert(
                 output,
-                indent(level) .. 'while __luash_table_contains "$' .. collectionName .. '" n "$' .. indexName .. '"; do'
+                indent(level) .. 'while __shlua_table_contains "$' .. collectionName .. '" n "$' .. indexName .. '"; do'
             )
             if names[1] then
                 table.insert(output, indent(level + 1) .. modifier .. names[1] .. '="$' .. indexName .. '"')
@@ -762,7 +762,7 @@ function Generator:statement(statement, level, inFunction)
                     indent(level + 1)
                         .. modifier
                         .. names[2]
-                        .. '="$(__luash_table_get "$'
+                        .. '="$(__shlua_table_get "$'
                         .. collectionName
                         .. '" n "$'
                         .. indexName
@@ -786,7 +786,7 @@ function Generator:statement(statement, level, inFunction)
             table.insert(
                 output,
                 indent(level + 1)
-                    .. 'if __luash_table_entry_exists "$'
+                    .. 'if __shlua_table_entry_exists "$'
                     .. collectionName
                     .. '" "$'
                     .. indexName
@@ -798,7 +798,7 @@ function Generator:statement(statement, level, inFunction)
                     indent(level + 2)
                         .. modifier
                         .. names[1]
-                        .. '="$(__luash_table_entry_key "$'
+                        .. '="$(__shlua_table_entry_key "$'
                         .. collectionName
                         .. '" "$'
                         .. indexName
@@ -811,7 +811,7 @@ function Generator:statement(statement, level, inFunction)
                     indent(level + 2)
                         .. modifier
                         .. names[2]
-                        .. '="$(__luash_table_entry_value "$'
+                        .. '="$(__shlua_table_entry_value "$'
                         .. collectionName
                         .. '" "$'
                         .. indexName
@@ -860,7 +860,7 @@ function Generator:statement(statement, level, inFunction)
 end
 
 function Generator:arithmeticRuntime()
-    return [[__luash_arithmetic() {
+    return [[__shlua_arithmetic() {
     LC_ALL=C awk -v left="$1" -v operator="$2" -v right="$3" '
         BEGIN {
             if (operator == "+") result = left + right
@@ -876,40 +876,40 @@ function Generator:arithmeticRuntime()
 end
 
 function Generator:callRuntime()
-    return [[__luash_closure_separator="$(printf '\034')"
-__luash_call() {
-    local __luash_callable="$1"
+    return [[__shlua_closure_separator="$(printf '\034')"
+__shlua_call() {
+    local __shlua_callable="$1"
     shift
-    local __luash_call_args=("$@")
-    case "$__luash_callable" in
-        __luash_closure_*)
-            local __luash_old_ifs="$IFS"
-            IFS="$__luash_closure_separator"
-            local __luash_closure_parts=()
-            read -r -a __luash_closure_parts <<< "$__luash_callable"
-            IFS="$__luash_old_ifs"
-            "${__luash_closure_parts[0]}" "${__luash_closure_parts[@]:1}" "${__luash_call_args[@]}"
+    local __shlua_call_args=("$@")
+    case "$__shlua_callable" in
+        __shlua_closure_*)
+            local __shlua_old_ifs="$IFS"
+            IFS="$__shlua_closure_separator"
+            local __shlua_closure_parts=()
+            read -r -a __shlua_closure_parts <<< "$__shlua_callable"
+            IFS="$__shlua_old_ifs"
+            "${__shlua_closure_parts[0]}" "${__shlua_closure_parts[@]:1}" "${__shlua_call_args[@]}"
             ;;
         *)
-            "$__luash_callable" "${__luash_call_args[@]}"
+            "$__shlua_callable" "${__shlua_call_args[@]}"
             ;;
     esac
 }]]
 end
 
 function Generator:coroutineRuntime()
-    return [[__luash_coroutine_ok=''
-__luash_coroutine_value=''
-__luash_coroutine_resume() {
+    return [[__shlua_coroutine_ok=''
+__shlua_coroutine_value=''
+__shlua_coroutine_resume() {
     local __handle="$1"
     local __worker_var="${__handle}__worker"
     local __worker="${!__worker_var}"
     if [ -z "$__worker" ]; then
-        __luash_coroutine_ok='false'
-        __luash_coroutine_value='invalid coroutine handle'
+        __shlua_coroutine_ok='false'
+        __shlua_coroutine_value='invalid coroutine handle'
         return 0
     fi
-    "__luash_coroutine_${__worker}" "$__handle"
+    "__shlua_coroutine_${__worker}" "$__handle"
 }]]
 end
 

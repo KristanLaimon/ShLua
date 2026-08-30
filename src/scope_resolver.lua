@@ -1,4 +1,4 @@
--- Lexical binding resolver for the Lua subset supported by Luash.
+-- Lexical binding resolver for the Lua subset supported by ShLua.
 
 local ScopeResolver = {}
 ScopeResolver.__index = ScopeResolver
@@ -45,7 +45,7 @@ function ScopeResolver:declare(name, kind, isLocal)
         self.bindingId = self.bindingId + 1
         binding = {
             name = name,
-            resolvedName = preserveName and name or "__luash_local_" .. self.bindingId .. "_" .. name,
+            resolvedName = preserveName and name or "__shlua_local_" .. self.bindingId .. "_" .. name,
             kind = kind or "variable",
             isLocal = true,
             functionDepth = self.functionDepth,

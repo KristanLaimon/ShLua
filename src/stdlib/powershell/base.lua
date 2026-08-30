@@ -1,19 +1,19 @@
 local M = { name = "base" }
 
 M.functions = {
-    ["tonumber"] = "__luash_tonumber",
-    ["tostring"] = "__luash_tostring",
-    ["type"] = "__luash_type",
+    ["tonumber"] = "__shlua_tonumber",
+    ["tostring"] = "__shlua_tostring",
+    ["type"] = "__shlua_type",
 }
 
-M.source = [=[function __luash_tostring {
+M.source = [=[function __shlua_tostring {
     param($Value)
     if ($null -eq $Value) { return 'nil' }
     if ($Value -is [bool]) { return $Value.ToString().ToLowerInvariant() }
     [Convert]::ToString($Value, [Globalization.CultureInfo]::InvariantCulture)
 }
 
-function __luash_tonumber {
+function __shlua_tonumber {
     param($Value, $Base = 10)
     if ([int] $Base -ne 10) {
         try { return [Convert]::ToInt64([string] $Value, [int] $Base) } catch { return $null }
@@ -27,7 +27,7 @@ function __luash_tonumber {
     )) { $Result }
 }
 
-function __luash_type {
+function __shlua_type {
     param($Value)
     if ($null -eq $Value) { return 'nil' }
     if ($Value -is [bool]) { return 'boolean' }
@@ -36,7 +36,7 @@ function __luash_type {
         $Value -is [single] -or $Value -is [double] -or $Value -is [decimal]
     ) { return 'number' }
     if ($Value -is [hashtable] -and $Value.Function) { return 'function' }
-    if ($Value -is [hashtable] -and $Value.__LuashTable) { return 'table' }
+    if ($Value -is [hashtable] -and $Value.__ShLuaTable) { return 'table' }
     if ($Value -is [array] -or $Value -is [hashtable]) { return 'table' }
     'string'
 }]=]

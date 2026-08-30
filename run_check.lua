@@ -26,7 +26,7 @@ local FILES = {
     "src/stdlib/powershell/table.lua",
     "src/bash_transpiler.lua",
     "src/ps1_transpiler.lua",
-    "src/luash.lua",
+    "src/shlua.lua",
     "tests/lexer.test.lua",
     "tests/parser.test.lua",
     "tests/bash_transpiler.test.lua",
@@ -82,15 +82,15 @@ local function quotedFiles()
     return table.concat(values, " ")
 end
 
-print("=== Luash Code Quality Checks ===")
+print("=== ShLua Code Quality Checks ===")
 local files = quotedFiles()
 local allPassed = true
 allPassed = runCheck("build + bundle syntax", "lua run_build.lua") and allPassed
-allPassed = runCheck("Lua syntax (luac -p)", "luac -p " .. files .. ' "dist/luash.lua"') and allPassed
+allPassed = runCheck("Lua syntax (luac -p)", "luac -p " .. files .. ' "dist/shlua.lua"') and allPassed
 allPassed = runCheck("StyLua format", "stylua --check -- " .. files) and allPassed
 allPassed = runCheck("Luacheck", "luacheck " .. files) and allPassed
-allPassed = runCheck("bundled CLI", "lua dist/luash.lua --help") and allPassed
-local apiCheck = "lua -e \"package.path='dist/?.lua'; local l=require('luash'); "
+allPassed = runCheck("bundled CLI", "lua dist/shlua.lua --help") and allPassed
+local apiCheck = "lua -e \"package.path='dist/?.lua'; local l=require('shlua'); "
     .. "assert(type(l.transpile('print(1)','bash'))=='string')\""
 allPassed = runCheck("bundled reusable API", apiCheck) and allPassed
 

@@ -1,5 +1,5 @@
 ---@diagnostic disable: lowercase-global, undefined-global
--- luacheck configuration for Luash
+-- luacheck configuration for ShLua
 -- https://github.com/mpeterv/luacheck
 
 std = "lua51"

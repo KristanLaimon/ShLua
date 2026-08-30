@@ -303,7 +303,7 @@ end
 
     describe("Phase 6 tables", function()
         it("parses sequence and keyed constructors", function()
-            local ast = parse([[local values = { "first", name = "Luash", [10] = "ten"; "second", }]])
+            local ast = parse([[local values = { "first", name = "ShLua", [10] = "ten"; "second", }]])
             local constructor = ast.body[1].init
             expect(constructor.type).toBe("TableConstructor")
             expect(#constructor.fields).toBe(4)

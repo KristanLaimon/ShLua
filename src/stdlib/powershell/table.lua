@@ -1,11 +1,11 @@
 local M = { name = "table" }
 
 M.functions = {
-    ["table.concat"] = "__luash_table_concat",
-    ["table.insert"] = "__luash_table_insert",
-    ["table.maxn"] = "__luash_table_maxn",
-    ["table.remove"] = "__luash_table_remove",
-    ["table.sort"] = "__luash_table_sort",
+    ["table.concat"] = "__shlua_table_concat",
+    ["table.insert"] = "__shlua_table_insert",
+    ["table.maxn"] = "__shlua_table_maxn",
+    ["table.remove"] = "__shlua_table_remove",
+    ["table.sort"] = "__shlua_table_sort",
 }
 
 M.unsupported = {
@@ -14,32 +14,32 @@ M.unsupported = {
 }
 
 M.callHelpers = {
-    ipairs = { "__luash_table_contains", "__luash_table_get" },
+    ipairs = { "__shlua_table_contains", "__shlua_table_get" },
 }
 
 M.dependencies = {
-    __luash_table_set = { "__luash_table_key" },
-    __luash_table_contains = { "__luash_table_key" },
-    __luash_table_get = { "__luash_table_key" },
-    __luash_table_length = { "__luash_table_contains" },
-    __luash_length = { "__luash_table_length" },
-    __luash_table_concat = { "__luash_table_length", "__luash_table_contains", "__luash_table_get" },
-    __luash_table_insert = { "__luash_table_length", "__luash_table_set", "__luash_table_get" },
-    __luash_table_remove = { "__luash_table_length", "__luash_table_get", "__luash_table_set" },
-    __luash_table_sort = { "__luash_table_length", "__luash_table_get", "__luash_table_truthy", "__luash_table_set" },
+    __shlua_table_set = { "__shlua_table_key" },
+    __shlua_table_contains = { "__shlua_table_key" },
+    __shlua_table_get = { "__shlua_table_key" },
+    __shlua_table_length = { "__shlua_table_contains" },
+    __shlua_length = { "__shlua_table_length" },
+    __shlua_table_concat = { "__shlua_table_length", "__shlua_table_contains", "__shlua_table_get" },
+    __shlua_table_insert = { "__shlua_table_length", "__shlua_table_set", "__shlua_table_get" },
+    __shlua_table_remove = { "__shlua_table_length", "__shlua_table_get", "__shlua_table_set" },
+    __shlua_table_sort = { "__shlua_table_length", "__shlua_table_get", "__shlua_table_truthy", "__shlua_table_set" },
 }
 
-M.source = [=[function __luash_table_new {
+M.source = [=[function __shlua_table_new {
     @{
-        __LuashTable = $true
+        __ShLuaTable = $true
         Entries = New-Object 'System.Collections.Generic.Dictionary[string,object]'
         Keys = New-Object 'System.Collections.Generic.Dictionary[string,object]'
     }
 }
 
-function __luash_table_key {
+function __shlua_table_key {
     param($Type, $Key)
-    if ($Type -eq 'z' -or $null -eq $Key) { throw 'Luash table error: table index is nil' }
+    if ($Type -eq 'z' -or $null -eq $Key) { throw 'ShLua table error: table index is nil' }
     if (-not $Type) {
         if ($Key -is [byte] -or $Key -is [int16] -or $Key -is [int32] -or $Key -is [int64] -or
             $Key -is [single] -or $Key -is [double] -or $Key -is [decimal]) { $Type = 'n' }
@@ -53,9 +53,9 @@ function __luash_table_key {
     's:' + [string] $Key
 }
 
-function __luash_table_set {
+function __shlua_table_set {
     param($Table, $Type, $Key, $Value, $Present = $true)
-    $Encoded = __luash_table_key $Type $Key
+    $Encoded = __shlua_table_key $Type $Key
     if (-not $Present -or $null -eq $Value) {
         [void] $Table.Entries.Remove($Encoded)
         [void] $Table.Keys.Remove($Encoded)
@@ -65,57 +65,57 @@ function __luash_table_set {
     $Table.Keys[$Encoded] = $Key
 }
 
-function __luash_table_contains {
+function __shlua_table_contains {
     param($Table, $Type, $Key)
-    $Table.Entries.ContainsKey((__luash_table_key $Type $Key))
+    $Table.Entries.ContainsKey((__shlua_table_key $Type $Key))
 }
 
-function __luash_table_get {
+function __shlua_table_get {
     param($Table, $Type, $Key)
-    $Encoded = __luash_table_key $Type $Key
+    $Encoded = __shlua_table_key $Type $Key
     if ($Table.Entries.ContainsKey($Encoded)) { $Table.Entries[$Encoded] }
 }
 
-function __luash_table_length {
+function __shlua_table_length {
     param($Table)
     $Length = 0
-    while (__luash_table_contains $Table 'n' ($Length + 1)) { $Length++ }
+    while (__shlua_table_contains $Table 'n' ($Length + 1)) { $Length++ }
     $Length
 }
 
-function __luash_length {
+function __shlua_length {
     param($Value)
-    if ($Value -is [hashtable] -and $Value.__LuashTable) { return __luash_table_length $Value }
+    if ($Value -is [hashtable] -and $Value.__ShLuaTable) { return __shlua_table_length $Value }
     ([string] $Value).Length
 }
 
-function __luash_table_concat {
+function __shlua_table_concat {
     param($Table, $Separator = '', $First = 1, $Last = $null)
-    if ($null -eq $Last) { $Last = __luash_table_length $Table }
+    if ($null -eq $Last) { $Last = __shlua_table_length $Table }
     $Parts = New-Object 'System.Collections.Generic.List[string]'
     for ($Index = [int] $First; $Index -le [int] $Last; $Index++) {
-        if (-not (__luash_table_contains $Table 'n' $Index)) {
-            throw "Luash table.concat error: invalid value at index $Index"
+        if (-not (__shlua_table_contains $Table 'n' $Index)) {
+            throw "ShLua table.concat error: invalid value at index $Index"
         }
-        [void] $Parts.Add([string] (__luash_table_get $Table 'n' $Index))
+        [void] $Parts.Add([string] (__shlua_table_get $Table 'n' $Index))
     }
     [string]::Join([string] $Separator, $Parts.ToArray())
 }
 
-function __luash_table_insert {
+function __shlua_table_insert {
     param($Table, $Position, $Value)
-    $Length = __luash_table_length $Table
+    $Length = __shlua_table_length $Table
     if ($PSBoundParameters.Count -eq 2) {
         $Value = $Position
         $Position = $Length + 1
     }
     for ($Index = $Length; $Index -ge [int] $Position; $Index--) {
-        __luash_table_set $Table 'n' ($Index + 1) (__luash_table_get $Table 'n' $Index)
+        __shlua_table_set $Table 'n' ($Index + 1) (__shlua_table_get $Table 'n' $Index)
     }
-    __luash_table_set $Table 'n' ([int] $Position) $Value
+    __shlua_table_set $Table 'n' ([int] $Position) $Value
 }
 
-function __luash_table_maxn {
+function __shlua_table_maxn {
     param($Table)
     $Maximum = 0.0
     foreach ($Encoded in @($Table.Entries.Keys)) {
@@ -127,39 +127,39 @@ function __luash_table_maxn {
     $Maximum
 }
 
-function __luash_table_remove {
+function __shlua_table_remove {
     param($Table, $Position = $null)
-    $Length = __luash_table_length $Table
+    $Length = __shlua_table_length $Table
     if ($null -eq $Position) { $Position = $Length }
     if ([int] $Position -lt 1 -or [int] $Position -gt $Length) { return $null }
-    $Removed = __luash_table_get $Table 'n' ([int] $Position)
+    $Removed = __shlua_table_get $Table 'n' ([int] $Position)
     for ($Index = [int] $Position; $Index -lt $Length; $Index++) {
-        __luash_table_set $Table 'n' $Index (__luash_table_get $Table 'n' ($Index + 1))
+        __shlua_table_set $Table 'n' $Index (__shlua_table_get $Table 'n' ($Index + 1))
     }
-    __luash_table_set $Table 'n' $Length $null $false
+    __shlua_table_set $Table 'n' $Length $null $false
     $Removed
 }
 
-function __luash_table_truthy {
+function __shlua_table_truthy {
     param($Value)
     $null -ne $Value -and $Value -ne $false
 }
 
-function __luash_table_sort {
+function __shlua_table_sort {
     param($Table, $Comparator = $null)
-    $Length = __luash_table_length $Table
+    $Length = __shlua_table_length $Table
     for ($End = $Length; $End -gt 1; $End--) {
         for ($Index = 1; $Index -lt $End; $Index++) {
-            $Left = __luash_table_get $Table 'n' $Index
-            $Right = __luash_table_get $Table 'n' ($Index + 1)
+            $Left = __shlua_table_get $Table 'n' $Index
+            $Right = __shlua_table_get $Table 'n' ($Index + 1)
             if ($null -ne $Comparator) {
-                $Swap = __luash_table_truthy (__luash_call $Comparator @($Right, $Left))
+                $Swap = __shlua_table_truthy (__shlua_call $Comparator @($Right, $Left))
             } else {
                 $Swap = $Right -lt $Left
             }
             if ($Swap) {
-                __luash_table_set $Table 'n' $Index $Right
-                __luash_table_set $Table 'n' ($Index + 1) $Left
+                __shlua_table_set $Table 'n' $Index $Right
+                __shlua_table_set $Table 'n' ($Index + 1) $Left
             }
         }
     }

@@ -1,6 +1,6 @@
 package.path = "src/?.lua;src/?/init.lua;tests/?.lua;" .. package.path
 
-local Luash = require("luash")
+local ShLua = require("shlua")
 
 local M = {}
 
@@ -87,7 +87,7 @@ local function execute(path, target)
 end
 
 function M.compileAndRunTarget(name, source, target)
-    local code = Luash.transpile(source, target)
+    local code = ShLua.transpile(source, target)
     local extension = target == "bash" and ".sh" or ".ps1"
     local path = "tests/scripts/" .. name .. extension
     writeFile(path, code)
@@ -102,7 +102,7 @@ function M.compileAndRunTarget(name, source, target)
 end
 
 function M.compileAndRun(name, source)
-    local outputs = Luash.transpile(source, "all")
+    local outputs = ShLua.transpile(source, "all")
     local result = {}
     for _, target in ipairs({ "bash", "ps1" }) do
         local extension = target == "bash" and ".sh" or ".ps1"

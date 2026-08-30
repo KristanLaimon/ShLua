@@ -1,12 +1,12 @@
-# Luash Alpha Compatibility
+# ShLua Alpha Compatibility
 
 ## 1. Host runtime
 
 - Intended host: Lua 5.1 or LuaJIT.
 - Runtime dependencies: Lua 5.1 standard library only; no LuaRocks or external modules.
 - Source code must remain valid under StyLua's `Lua51` parser and Luacheck's `lua51` standard.
-- `dist/luash.lua` is self-contained and works as both an executable CLI and `require("luash")` module.
-- `dist/luash.exe` (Windows x64) and `dist/luash` (Linux x64) are self-running SRLua 5.1.5 packages of the same bundle.
+- `dist/shlua.lua` is self-contained and works as both an executable CLI and `require("shlua")` module.
+- `dist/shlua.exe` (Windows x64) and `dist/shlua` (Linux x64) are self-running SRLua 5.1.5 packages of the same bundle.
 
 ## 2. Supported input subset
 
@@ -97,7 +97,7 @@ control flow or local declarations in workers, `wrap`, `status`, arbitrary sched
 - Header: `#!/usr/bin/env bash`.
 - Functions use `name() { ...; }`; parameters are copied from positional arguments into local variables.
 - Lexical closures are encoded as generated callable values with captured fields and dispatched by the generated
-  `__luash_call` helper.
+  `__shlua_call` helper.
 - `print` uses `printf`; multiple arguments are tab-separated.
 - Function return values are written to stdout and captured with command substitution.
 - Source arithmetic expressions use an injected `awk` helper so decimal operands and division are preserved. Numeric
@@ -121,7 +121,7 @@ Known semantic differences:
   function parameter can still be treated as a numeric key.
 - Generated condition checks approximate truthiness. In particular, empty strings are false-like in generated Bash,
   while Lua treats an empty string as true.
-- Exit statuses and stdout are separate in Bash, so Luash uses stdout for ordinary function values.
+- Exit statuses and stdout are separate in Bash, so ShLua uses stdout for ordinary function values.
 - `os.clock` measures elapsed whole seconds through Bash `SECONDS`, rather than process CPU time.
 - `string.find` is literal-only and exposes only the first return value; byte functions follow the target locale and
   cannot preserve embedded NUL bytes.
@@ -151,7 +151,7 @@ Known semantic differences:
 
 ## 6. Reserved generated names
 
-User source should not declare names beginning with `__luash_`. Both backends reserve that prefix for coroutine helpers,
+User source should not declare names beginning with `__shlua_`. Both backends reserve that prefix for coroutine helpers,
 temporary resume results, and other generated runtime details.
 
 ## 7. Compatibility verification

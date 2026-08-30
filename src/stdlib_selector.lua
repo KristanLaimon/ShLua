@@ -3,9 +3,9 @@ local M = {}
 local function helperFragments(source, target)
     local pattern
     if target == "bash" then
-        pattern = "()\n(__luash_[%w_]+)%(%)[ \t]*{"
+        pattern = "()\n(__shlua_[%w_]+)%(%)[ \t]*{"
     else
-        pattern = "()\nfunction[ \t]+(__luash_[%w_]+)[ \t]*{"
+        pattern = "()\nfunction[ \t]+(__shlua_[%w_]+)[ \t]*{"
     end
 
     local padded = "\n" .. source

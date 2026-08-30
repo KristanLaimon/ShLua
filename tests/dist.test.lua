@@ -3,9 +3,9 @@ package.path = "tests/?.lua;" .. package.path
 local lust = require("Lust")
 lust.injectGlobals()
 
-package.loaded.luash = nil
+package.loaded.shlua = nil
 package.path = "dist/?.lua"
-local Luash = require("luash")
+local ShLua = require("shlua")
 
 local function quote(path)
     return '"' .. path:gsub('"', '""') .. '"'
@@ -31,8 +31,8 @@ end
 describe("Single-file Distribution", function()
     it("creates valid SRLua packages for Windows and Linux", function()
         local targets = {
-            { path = "dist/luash.exe", magic = "MZ", footerLongBytes = 4 },
-            { path = "dist/luash", magic = "\127ELF", footerLongBytes = 8 },
+            { path = "dist/shlua.exe", magic = "MZ", footerLongBytes = 4 },
+            { path = "dist/shlua", magic = "\127ELF", footerLongBytes = 8 },
         }
 
         for _, target in ipairs(targets) do
@@ -51,13 +51,13 @@ describe("Single-file Distribution", function()
     end)
 
     it("loads without source modules on package.path", function()
-        expect(Luash.VERSION).toBe("0.1.0-alpha")
-        local code = Luash.transpile("local answer = 6 * 7", "bash")
-        expect(code:find("answer=\"$(__luash_arithmetic 6 '*' 7)\"", 1, true) ~= nil).toBeTruthy()
+        expect(ShLua.VERSION).toBe("0.1.0-alpha")
+        local code = ShLua.transpile("local answer = 6 * 7", "bash")
+        expect(code:find("answer=\"$(__shlua_arithmetic 6 '*' 7)\"", 1, true) ~= nil).toBeTruthy()
     end)
 
     it("returns both targets from the reusable API", function()
-        local outputs = Luash.compile("print('hello')", "all")
+        local outputs = ShLua.compile("print('hello')", "all")
         expect(type(outputs.bash)).toBe("string")
         expect(type(outputs.ps1)).toBe("string")
     end)
@@ -65,7 +65,7 @@ describe("Single-file Distribution", function()
     it("runs as a standalone compiler", function()
         local tempRoot = os.getenv("TEMP") or os.getenv("TMPDIR") or "."
         local separator = package.config:sub(1, 1)
-        local name = (os.tmpname():match("[^/\\]+$") or "luashdist"):gsub("[^%w_]", "")
+        local name = (os.tmpname():match("[^/\\]+$") or "shluadist"):gsub("[^%w_]", "")
         local inputPath = tempRoot .. separator .. name .. ".lua"
         local outputBase = tempRoot .. separator .. name .. "_output"
         local outputPath = outputBase .. ".sh"
@@ -73,7 +73,7 @@ describe("Single-file Distribution", function()
         input:write("print('from dist')")
         input:close()
 
-        local command = "lua dist/luash.lua -i " .. quote(inputPath) .. " -o " .. quote(outputBase) .. " -t bash"
+        local command = "lua dist/shlua.lua -i " .. quote(inputPath) .. " -o " .. quote(outputBase) .. " -t bash"
         local ok = os.execute(command)
         local output = io.open(outputPath, "rb")
         local code = output and output:read("*a") or ""
@@ -91,7 +91,7 @@ describe("Single-file Distribution", function()
         it("runs the Windows SRLua executable", function()
             local tempRoot = os.getenv("TEMP") or "."
             local separator = package.config:sub(1, 1)
-            local name = (os.tmpname():match("[^/\\]+$") or "luashexec"):gsub("[^%w_]", "")
+            local name = (os.tmpname():match("[^/\\]+$") or "shluaexec"):gsub("[^%w_]", "")
             local inputPath = tempRoot .. separator .. name .. ".lua"
             local outputBase = tempRoot .. separator .. name .. "_output"
             local outputPath = outputBase .. ".sh"
@@ -99,7 +99,7 @@ describe("Single-file Distribution", function()
             input:write("print('from executable')")
             input:close()
 
-            local command = "dist\\luash.exe -i " .. quote(inputPath) .. " -o " .. quote(outputBase) .. " -t bash"
+            local command = "dist\\shlua.exe -i " .. quote(inputPath) .. " -o " .. quote(outputBase) .. " -t bash"
             local ok = os.execute(command)
             local output = io.open(outputPath, "rb")
             local code = output and output:read("*a") or ""

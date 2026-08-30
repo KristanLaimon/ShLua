@@ -1,7 +1,7 @@
-# AGENTS.md - Luash Transpiler Project Context
+# AGENTS.md - ShLua Transpiler Project Context
 
 ## Project Overview
-**Luash** is a Lua-to-shell transpiler that converts Lua source code into **Bash** (`.sh`) and **PowerShell** (`.ps1`) scripts. It uses a modular compiler architecture with Lexer → Parser → Transpiler pipeline.
+**ShLua** is a Lua-to-shell transpiler that converts Lua source code into **Bash** (`.sh`) and **PowerShell** (`.ps1`) scripts. It uses a modular compiler architecture with Lexer → Parser → Transpiler pipeline.
 
 ## Stack & Requirements
 - **Language**: Lua 5.1 compatible (also runs on LuaJIT)
@@ -103,12 +103,12 @@ lua tests/<testfile>.test.lua
 Run these commands from the repository root and do not report success unless all three are green:
 
 ```bash
-lua run_build.lua  # syntax-checks sources and creates dist/luash.lua
+lua run_build.lua  # syntax-checks sources and creates dist/shlua.lua
 lua run_tests.lua  # runs unit, complex, coroutine, integration, and dist tests
 lua run_check.lua  # runs luac -p, StyLua --check, Luacheck, and dist smoke checks
 ```
 
-- `dist/luash.lua` must stay dependency-free and usable both as a CLI and through `require("luash")`.
+- `dist/shlua.lua` must stay dependency-free and usable both as a CLI and through `require("shlua")`.
 - Keep source syntax Lua 5.1 compatible. `run_check.lua` combines `luac -p`, StyLua's `Lua51` parser, and Luacheck's
   `lua51` standard; use an actual Lua 5.1 runtime too when one is available.
 - Generated Bash and PowerShell must be tested by execution when their interpreters are installed, not only by string

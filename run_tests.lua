@@ -65,7 +65,7 @@ local function cleanupGeneratedScripts()
     end
 end
 
-print("=== Luash Test Suite ===\n")
+print("=== ShLua Test Suite ===\n")
 
 local passed = 0
 local failed = 0

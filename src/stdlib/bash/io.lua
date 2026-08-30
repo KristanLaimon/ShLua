@@ -1,9 +1,9 @@
 local M = { name = "io" }
 
 M.functions = {
-    ["io.flush"] = "__luash_io_flush",
-    ["io.read"] = "__luash_io_read",
-    ["io.write"] = "__luash_io_write",
+    ["io.flush"] = "__shlua_io_flush",
+    ["io.read"] = "__shlua_io_read",
+    ["io.write"] = "__shlua_io_write",
 }
 
 M.unsupported = {
@@ -17,18 +17,18 @@ M.unsupported = {
     ["io.type"] = "file handles are not implemented",
 }
 
-M.source = [[__luash_io_write() {
+M.source = [[__shlua_io_write() {
     printf '%s' "$@"
 }
 
-__luash_io_flush() {
+__shlua_io_flush() {
     return 0
 }
 
-__luash_io_read() {
-    local __luash_value
-    IFS= read -r __luash_value || return 0
-    printf '%s\n' "$__luash_value"
+__shlua_io_read() {
+    local __shlua_value
+    IFS= read -r __shlua_value || return 0
+    printf '%s\n' "$__shlua_value"
 }]]
 
 return M

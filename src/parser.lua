@@ -1,4 +1,4 @@
--- Recursive-descent parser for the Lua subset supported by Luash.
+-- Recursive-descent parser for the Lua subset supported by ShLua.
 
 local Parser = {}
 Parser.__index = Parser

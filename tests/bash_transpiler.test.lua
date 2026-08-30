@@ -21,7 +21,7 @@ describe("Bash Transpiler", function()
         local code = transpile([[local greeting = "it's $HOME"
 local result = 1 + 2 * 3]])
         expect(contains(code, "greeting='it'\\''s $HOME'")).toBeTruthy()
-        expect(contains(code, "result=\"$(__luash_arithmetic 1 '+' \"$(__luash_arithmetic 2 '*' 3)\")\"")).toBeTruthy()
+        expect(contains(code, "result=\"$(__shlua_arithmetic 1 '+' \"$(__shlua_arithmetic 2 '*' 3)\")\"")).toBeTruthy()
     end)
 
     it("emits functions, command substitution, and returns", function()
@@ -65,9 +65,9 @@ for i = 3, 1, -1 do print(i) end
 for index, item in ipairs(items) do print(index, item) end]])
         expect(contains(code, "while ")).toBeTruthy()
         expect(contains(code, "while :; do")).toBeTruthy()
-        expect(contains(code, "__luash_local_")).toBeTruthy()
-        expect(contains(code, "__luash_for_limit_")).toBeTruthy()
-        expect(contains(code, "__luash_for_collection_")).toBeTruthy()
+        expect(contains(code, "__shlua_local_")).toBeTruthy()
+        expect(contains(code, "__shlua_for_limit_")).toBeTruthy()
+        expect(contains(code, "__shlua_for_collection_")).toBeTruthy()
     end)
 
     it("emits captured anonymous functions", function()
@@ -76,8 +76,8 @@ for index, item in ipairs(items) do print(index, item) end]])
 end
 local greet = make("hello ")
 print(greet("Lua"))]])
-        expect(contains(code, "__luash_closure_1()")).toBeTruthy()
-        expect(contains(code, '__luash_call "${greet}"')).toBeTruthy()
+        expect(contains(code, "__shlua_closure_1()")).toBeTruthy()
+        expect(contains(code, '__shlua_call "${greet}"')).toBeTruthy()
     end)
 
     it("rejects writes to captured values instead of changing their meaning", function()

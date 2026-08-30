@@ -3,14 +3,14 @@ package.path = "src/?.lua;src/?/init.lua;tests/?.lua;" .. package.path
 local lust = require("Lust")
 lust.injectGlobals()
 
-local Luash = require("luash")
+local ShLua = require("shlua")
 
 local function quote(path)
     return '"' .. path:gsub('"', '""') .. '"'
 end
 
 local function writeTemporary(content, target)
-    local generatedName = os.tmpname():match("[^/\\]+$") or "luash-integration"
+    local generatedName = os.tmpname():match("[^/\\]+$") or "shlua-integration"
     local extension = target == "bash" and ".sh" or ".ps1"
     generatedName = generatedName:gsub("%.*$", "") .. extension
     local path = "tests/" .. generatedName
@@ -72,7 +72,7 @@ local function findBash()
 end
 
 local function executeTarget(source, target)
-    local path = writeTemporary(Luash.transpile(source, target), target)
+    local path = writeTemporary(ShLua.transpile(source, target), target)
     local command
     if target == "bash" then
         local bash = assert(findBash(), "Bash is required for Bash integration tests")

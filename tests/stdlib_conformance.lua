@@ -1,10 +1,10 @@
-local Luash = require("luash")
+local ShLua = require("shlua")
 local helper = require("script_test_helper")
 
 local M = {}
 
 local function expectHelpers(target, source, helpers)
-    local code = Luash.transpile(source, target)
+    local code = ShLua.transpile(source, target)
     for _, name in ipairs(helpers) do
         expect(code:find(name, 1, true) ~= nil).toBeTruthy()
     end
@@ -65,12 +65,12 @@ io.flush()
 io.write("x")
 local value = io.read()]],
                 {
-                    "__luash_tonumber",
-                    "__luash_tostring",
-                    "__luash_type",
-                    "__luash_io_flush",
-                    "__luash_io_write",
-                    "__luash_io_read",
+                    "__shlua_tonumber",
+                    "__shlua_tostring",
+                    "__shlua_type",
+                    "__shlua_io_flush",
+                    "__shlua_io_write",
+                    "__shlua_io_read",
                 }
             )
         end)
@@ -85,30 +85,30 @@ local value = io.read()]],
     math.sqrt(1), math.tan(1), math.tanh(1)
 )]],
                 {
-                    "__luash_math_abs",
-                    "__luash_math_acos",
-                    "__luash_math_asin",
-                    "__luash_math_atan",
-                    "__luash_math_atan2",
-                    "__luash_math_ceil",
-                    "__luash_math_cos",
-                    "__luash_math_cosh",
-                    "__luash_math_deg",
-                    "__luash_math_exp",
-                    "__luash_math_floor",
-                    "__luash_math_fmod",
-                    "__luash_math_ldexp",
-                    "__luash_math_log",
-                    "__luash_math_log10",
-                    "__luash_math_max",
-                    "__luash_math_min",
-                    "__luash_math_pow",
-                    "__luash_math_rad",
-                    "__luash_math_sin",
-                    "__luash_math_sinh",
-                    "__luash_math_sqrt",
-                    "__luash_math_tan",
-                    "__luash_math_tanh",
+                    "__shlua_math_abs",
+                    "__shlua_math_acos",
+                    "__shlua_math_asin",
+                    "__shlua_math_atan",
+                    "__shlua_math_atan2",
+                    "__shlua_math_ceil",
+                    "__shlua_math_cos",
+                    "__shlua_math_cosh",
+                    "__shlua_math_deg",
+                    "__shlua_math_exp",
+                    "__shlua_math_floor",
+                    "__shlua_math_fmod",
+                    "__shlua_math_ldexp",
+                    "__shlua_math_log",
+                    "__shlua_math_log10",
+                    "__shlua_math_max",
+                    "__shlua_math_min",
+                    "__shlua_math_pow",
+                    "__shlua_math_rad",
+                    "__shlua_math_sin",
+                    "__shlua_math_sinh",
+                    "__shlua_math_sqrt",
+                    "__shlua_math_tan",
+                    "__shlua_math_tanh",
                 }
             )
         end)
@@ -123,16 +123,16 @@ os.remove("old")
 os.rename("old", "new")
 os.exit(0)]],
                 {
-                    "__luash_os_clock",
-                    "__luash_os_date",
-                    "__luash_os_difftime",
-                    "__luash_os_execute",
-                    "__luash_os_getenv",
-                    "__luash_os_remove",
-                    "__luash_os_rename",
-                    "__luash_os_time",
-                    "__luash_os_tmpname",
-                    "__luash_os_exit",
+                    "__shlua_os_clock",
+                    "__shlua_os_date",
+                    "__shlua_os_difftime",
+                    "__shlua_os_execute",
+                    "__shlua_os_getenv",
+                    "__shlua_os_remove",
+                    "__shlua_os_rename",
+                    "__shlua_os_time",
+                    "__shlua_os_tmpname",
+                    "__shlua_os_exit",
                 }
             )
         end)
@@ -145,16 +145,16 @@ os.exit(0)]],
     string.lower("A"), string.rep("a", 1), string.reverse("a"), string.sub("a", 1), string.upper("a")
 )]],
                 {
-                    "__luash_string_byte",
-                    "__luash_string_char",
-                    "__luash_string_find",
-                    "__luash_string_format",
-                    "__luash_string_len",
-                    "__luash_string_lower",
-                    "__luash_string_rep",
-                    "__luash_string_reverse",
-                    "__luash_string_sub",
-                    "__luash_string_upper",
+                    "__shlua_string_byte",
+                    "__shlua_string_char",
+                    "__shlua_string_find",
+                    "__shlua_string_format",
+                    "__shlua_string_len",
+                    "__shlua_string_lower",
+                    "__shlua_string_rep",
+                    "__shlua_string_reverse",
+                    "__shlua_string_sub",
+                    "__shlua_string_upper",
                 }
             )
         end)
@@ -168,11 +168,11 @@ table.remove(values, 1)
 table.sort(values)
 print(table.concat(values, ","), table.maxn(values))]],
                 {
-                    "__luash_table_insert",
-                    "__luash_table_remove",
-                    "__luash_table_sort",
-                    "__luash_table_concat",
-                    "__luash_table_maxn",
+                    "__shlua_table_insert",
+                    "__shlua_table_remove",
+                    "__shlua_table_sort",
+                    "__shlua_table_concat",
+                    "__shlua_table_maxn",
                 }
             )
         end)

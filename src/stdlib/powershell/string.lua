@@ -1,16 +1,16 @@
 local M = { name = "string" }
 
 M.functions = {
-    ["string.byte"] = "__luash_string_byte",
-    ["string.char"] = "__luash_string_char",
-    ["string.find"] = "__luash_string_find",
-    ["string.format"] = "__luash_string_format",
-    ["string.len"] = "__luash_string_len",
-    ["string.lower"] = "__luash_string_lower",
-    ["string.rep"] = "__luash_string_rep",
-    ["string.reverse"] = "__luash_string_reverse",
-    ["string.sub"] = "__luash_string_sub",
-    ["string.upper"] = "__luash_string_upper",
+    ["string.byte"] = "__shlua_string_byte",
+    ["string.char"] = "__shlua_string_char",
+    ["string.find"] = "__shlua_string_find",
+    ["string.format"] = "__shlua_string_format",
+    ["string.len"] = "__shlua_string_len",
+    ["string.lower"] = "__shlua_string_lower",
+    ["string.rep"] = "__shlua_string_rep",
+    ["string.reverse"] = "__shlua_string_reverse",
+    ["string.sub"] = "__shlua_string_sub",
+    ["string.upper"] = "__shlua_string_upper",
 }
 
 M.unsupported = {
@@ -20,7 +20,7 @@ M.unsupported = {
     ["string.match"] = "requires Lua pattern matching and capture returns",
 }
 
-M.source = [=[function __luash_string_byte {
+M.source = [=[function __shlua_string_byte {
     param($Value, $Index = 1)
     $Text = [string] $Value
     $Position = [int] $Index
@@ -28,14 +28,14 @@ M.source = [=[function __luash_string_byte {
     if ($Position -ge 1 -and $Position -le $Text.Length) { [int] [char] $Text[$Position - 1] }
 }
 
-function __luash_string_char {
+function __shlua_string_char {
     param([Parameter(ValueFromRemainingArguments = $true)] [object[]] $Codes)
     $Builder = New-Object System.Text.StringBuilder
     foreach ($Code in $Codes) { [void] $Builder.Append([char] [int] $Code) }
     $Builder.ToString()
 }
 
-function __luash_string_find {
+function __shlua_string_find {
     param($Value, $Needle, $Index = 1, $Plain = $false)
     $Text = [string] $Value
     $Position = [int] $Index
@@ -45,7 +45,7 @@ function __luash_string_find {
     if ($Found -ge 0) { $Found + 1 }
 }
 
-function __luash_string_format {
+function __shlua_string_format {
     param($Format, [Parameter(ValueFromRemainingArguments = $true)] [object[]] $Values)
     $Text = [string] $Format
     $Builder = New-Object System.Text.StringBuilder
@@ -89,22 +89,22 @@ function __luash_string_format {
     $Builder.ToString()
 }
 
-function __luash_string_len { param($Value) ([string] $Value).Length }
-function __luash_string_lower { param($Value) ([string] $Value).ToLowerInvariant() }
-function __luash_string_rep {
+function __shlua_string_len { param($Value) ([string] $Value).Length }
+function __shlua_string_lower { param($Value) ([string] $Value).ToLowerInvariant() }
+function __shlua_string_rep {
     param($Value, $Count)
     $Builder = New-Object System.Text.StringBuilder
     for ($Index = 0; $Index -lt [int] $Count; $Index++) { [void] $Builder.Append([string] $Value) }
     $Builder.ToString()
 }
-function __luash_string_reverse {
+function __shlua_string_reverse {
     param($Value)
     $Text = [string] $Value
     $Builder = New-Object System.Text.StringBuilder
     for ($Index = $Text.Length - 1; $Index -ge 0; $Index--) { [void] $Builder.Append($Text[$Index]) }
     $Builder.ToString()
 }
-function __luash_string_sub {
+function __shlua_string_sub {
     param($Value, $Start, $End = -1)
     $Text = [string] $Value
     $First = [int] $Start
@@ -116,6 +116,6 @@ function __luash_string_sub {
     if ($First -gt $Last) { return '' }
     $Text.Substring($First - 1, $Last - $First + 1)
 }
-function __luash_string_upper { param($Value) ([string] $Value).ToUpperInvariant() }]=]
+function __shlua_string_upper { param($Value) ([string] $Value).ToUpperInvariant() }]=]
 
 return M

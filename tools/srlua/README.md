@@ -1,6 +1,6 @@
 # Vendored SRLua runtimes
 
-`run_build.lua` packages the standalone Luash bundle with these SRLua 5.1.5 runtimes:
+`run_build.lua` packages the standalone ShLua bundle with these SRLua 5.1.5 runtimes:
 
 - `windows/srlua515.exe`: Windows x64
 - `linux/srlua515`: Linux x64

@@ -1,5 +1,5 @@
 -- ============================================================================
--- Lexical Analyzer for the Lua 5.1 syntax used by Luash.
+-- Lexical Analyzer for the Lua 5.1 syntax used by ShLua.
 -- File: lexer.lua
 -- Language: Lua (Output/Comments in English)
 -- ============================================================================

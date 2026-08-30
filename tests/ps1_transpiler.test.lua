@@ -43,13 +43,13 @@ else
 end]])
         expect(contains(code, "($count -ge 2)")).toBeTruthy()
         expect(contains(code, "} elseif (")).toBeTruthy()
-        expect(contains(code, "__luash_print 'go'")).toBeTruthy()
+        expect(contains(code, "__shlua_print 'go'")).toBeTruthy()
     end)
 
     it("emits unary operations and exponentiation", function()
         local code = transpile("negative = -5 length = #name power = 2 ^ 3")
         expect(contains(code, "$negative = (-5)")).toBeTruthy()
-        expect(contains(code, "$length = (__luash_length $name)")).toBeTruthy()
+        expect(contains(code, "$length = (__shlua_length $name)")).toBeTruthy()
         expect(contains(code, "$power = [Math]::Pow(2, 3)")).toBeTruthy()
     end)
 
@@ -60,7 +60,7 @@ end
 local greet = make("hello ")
 for i = 1, 2 do print(greet(i)) end
 for key, value in pairs(items) do print(key, value) end]])
-        expect(contains(code, "function __luash_closure_1")).toBeTruthy()
+        expect(contains(code, "function __shlua_closure_1")).toBeTruthy()
         expect(contains(code, "Captures = @{")).toBeTruthy()
         expect(contains(code, "while (")).toBeTruthy()
         expect(contains(code, ".Entries.Keys")).toBeTruthy()
