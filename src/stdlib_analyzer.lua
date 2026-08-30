@@ -18,6 +18,9 @@ local function libraryForName(name)
     if BASE_FUNCTIONS[name] then
         return "base"
     end
+    if name == "pairs" or name == "ipairs" then
+        return "table"
+    end
     local prefix = name:match("^([%a_][%w_]*)%.")
     if prefix and LIBRARIES[prefix] then
         return prefix
@@ -48,10 +51,23 @@ function M.analyze(program)
                 visitExpression(argument)
             end
         elseif node.type == "UnaryExpr" then
+            if node.operator == "#" then
+                required.table = true
+            end
             visitExpression(node.operand)
         elseif node.type == "BinaryExpr" then
             visitExpression(node.left)
             visitExpression(node.right)
+        elseif node.type == "IndexExpr" then
+            required.table = true
+            visitExpression(node.table)
+            visitExpression(node.key)
+        elseif node.type == "TableConstructor" then
+            required.table = true
+            for _, field in ipairs(node.fields) do
+                visitExpression(field.key)
+                visitExpression(field.value)
+            end
         elseif node.type == "FunctionExpr" then
             visitStatements(node.body)
         end
@@ -84,6 +100,11 @@ function M.analyze(program)
                 visitStatements(statement.body)
             elseif statement.type == "DoStmt" then
                 visitStatements(statement.body)
+            elseif statement.type == "TableAssignmentStmt" then
+                required.table = true
+                visitExpression(statement.table)
+                visitExpression(statement.key)
+                visitExpression(statement.init)
             else
                 visitExpression(statement.init or statement.value or statement.expr)
             end

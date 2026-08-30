@@ -2,8 +2,8 @@
 
 ## Current stage
 
-Phases 0–5 and 7 are complete. The `hard_test.lua` Phase 8 fixture and helper bundling are complete. Phase 6 table
-values/mutation remain the active stage; scalar base, IO, and OS support is already implemented.
+Phases 0–8 are complete for the documented alpha subset. Phase 6 now includes scalar base/IO/OS support plus mutable
+table constructors, access, iteration, and the Lua 5.1 table library on both targets.
 
 ## Starting state
 
@@ -25,9 +25,10 @@ values/mutation remain the active stage; scalar base, IO, and OS support is alre
 
 ## Known later-phase boundary
 
-Table constructors, indexing, mutable identity, and the `table` library still need a cross-target representation.
-File handles, Lua string patterns/iterators, seeded random state, and library APIs requiring general multiple returns
-are explicit errors rather than approximate translations.
+File handles, Lua string patterns/iterators, seeded random state, method/metatable behavior, and library APIs requiring
+general multiple returns remain explicit errors rather than approximate translations. Bash retains numeric/string key
+tags for literals and statically typed locals; a numeric-looking string crossing an untyped function parameter is still
+inferred as numeric because ordinary Bash variables do not carry Lua runtime types.
 
 ## Phase 0–3 implementation summary
 
@@ -59,7 +60,7 @@ are explicit errors rather than approximate translations.
 - Generated Phase 1–3 fixtures execute successfully under installed Bash and Windows PowerShell, including lexical
   shadowing, all new loop forms used by the fixture, anonymous/named captures, and ordinary recursion.
 - `lua run_build.lua`: passed.
-- `lua run_tests.lua`: 19 test files passed (8 compiler/integration suites and 11 numbered script cases).
+- `lua run_tests.lua`: 20 test files passed (8 compiler/integration suites and 12 numbered script cases).
 - `lua run_check.lua`: build, `luac -p`, StyLua, Luacheck, bundled CLI, and bundled API checks passed.
 - No separate Lua 5.1 or LuaJIT executable was installed, so validation used the configured `lua` runtime plus the
   repository's Lua51 StyLua and Luacheck checks.
@@ -83,6 +84,32 @@ are explicit errors rather than approximate translations.
   quoting and stopped treating failed launches as skipped execution.
 - Added focused script cases `08_bash_stdlib`, `09_powershell_stdlib`, and `10_hard_test`, plus analyzer coverage.
 
+## Phase 6 table implementation summary
+
+- Added `TableConstructor`, `IndexExpr`, and `TableAssignmentStmt` parsing for sequence fields, `[expression]` keys,
+  record fields, chained access, mutation, trailing separators, and 1-based implicit indices.
+- The resolver walks all table nodes and carries simple static value types so Bash can distinguish numeric keys from
+  numeric-looking string locals. The analyzer selects the table runtime for constructors, access, length, and
+  `pairs`/`ipairs`, while preserving dotted standard-library constants such as `math.pi`.
+- PowerShell tables are mutable wrapper hashtables backed by case-sensitive .NET dictionaries with encoded key types.
+  Bash tables are opaque handles backed by a private temporary directory, preserving alias identity across command
+  substitution when a function returns a table; an exit trap removes the private store.
+- Implemented table length, `nil` deletion, nested tables, `table.concat`, `table.insert`, `table.maxn`, `table.remove`,
+  and in-place `table.sort` with an optional comparator. `pairs` traverses typed entries and `ipairs` stops at the first
+  missing positive integer key after evaluating its source expression once.
+- Added parser/analyzer coverage and `11_tables.test.lua`, which executes aliases, returned/nested tables, typed keys,
+  deletion, all five table functions, comparator sorting, and both generic iterators on installed Bash and PowerShell.
+
+## Output injection optimization
+
+- Split the unconditional backend runtime into demand-driven fragments. Bash emits arithmetic only for lowered
+  arithmetic expressions, callable dispatch only for closures or `table.sort` comparators, and coroutine helpers only
+  when alpha coroutine handles are present. PowerShell emits callable dispatch only when closures or comparators need it.
+- Existing strategy-module selection remains AST-driven. Minimal scripts now contain only their target header/output;
+  `print(1)` is 37 bytes for Bash and 15 bytes for PowerShell before any requested standard-library helpers.
+- Added regression coverage proving minimal, closure, coroutine, arithmetic, table-comparator, and selective-stdlib
+  programs receive exactly their required runtime support.
+
 ## Script test layout
 
 - The former `tests/bash/` and `tests/powershell/` regression directories were removed.
@@ -91,5 +118,6 @@ are explicit errors rather than approximate translations.
   increasing complexity.
 - `08_bash_stdlib` and `09_powershell_stdlib` execute target-specific math/string helpers; `10_hard_test` executes the
   original fixture on both installed targets and checks stable output boundaries around the nondeterministic duration.
+- `11_tables` executes shared mutable table semantics and the complete supported table library on both targets.
 - Script cases write generated `.sh` and `.ps1` files into `tests/scripts/`. `run_tests.lua` deletes the exact known
   artifacts after all cases run, including after ordinary test failures; `.gitignore` protects interrupted runs.

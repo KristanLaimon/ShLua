@@ -24,15 +24,25 @@ function __luash_os_date {
     $Epoch = [DateTime]::SpecifyKind([datetime] '1970-01-01', [DateTimeKind]::Utc)
     $Value = if ($null -eq $Time) { Get-Date } else { $Epoch.AddSeconds([double] $Time).ToLocalTime() }
     if ($Format -eq '%c') { return $Value.ToString() }
-    $Converted = ([string] $Format).Replace('%Y', 'yyyy').Replace('%m', 'MM').Replace('%d', 'dd').Replace('%H', 'HH').Replace('%M', 'mm').Replace('%S', 'ss')
+    $Converted = ([string] $Format).Replace('%Y', 'yyyy').Replace('%m', 'MM').Replace('%d', 'dd')
+    $Converted = $Converted.Replace('%H', 'HH').Replace('%M', 'mm').Replace('%S', 'ss')
     $Value.ToString($Converted, [Globalization.CultureInfo]::InvariantCulture)
 }
 function __luash_os_difftime { param($First, $Second) ([double] $First) - ([double] $Second) }
-function __luash_os_execute { param($Command) if ($null -eq $Command) { return 0 }; & cmd.exe /d /s /c ([string] $Command); $LASTEXITCODE }
+function __luash_os_execute {
+    param($Command)
+    if ($null -eq $Command) { return 0 }
+    & cmd.exe /d /s /c ([string] $Command)
+    $LASTEXITCODE
+}
 function __luash_os_exit { param($Code = 0) exit ([int] $Code) }
 function __luash_os_getenv { param($Name) [Environment]::GetEnvironmentVariable([string] $Name) }
 function __luash_os_remove { param($Path) Remove-Item -LiteralPath ([string] $Path); $true }
-function __luash_os_rename { param($Old, $New) Move-Item -LiteralPath ([string] $Old) -Destination ([string] $New); $true }
+function __luash_os_rename {
+    param($Old, $New)
+    Move-Item -LiteralPath ([string] $Old) -Destination ([string] $New)
+    $true
+}
 function __luash_os_time {
     $Epoch = [DateTime]::SpecifyKind([datetime] '1970-01-01', [DateTimeKind]::Utc)
     [Math]::Floor(((Get-Date).ToUniversalTime() - $Epoch).TotalSeconds)

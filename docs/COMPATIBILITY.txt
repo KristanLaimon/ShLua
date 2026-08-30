@@ -15,7 +15,8 @@
 - Local declarations with or without an initializer: `local name [= expression]`.
 - Variable assignments: `name = expression`.
 - Lexical binding resolution for chunk locals, function locals/parameters, block locals, and loop variables.
-- Identifiers are simple Lua names; table fields, indexing, and method syntax are not general alpha features.
+- Sequence/keyed table constructors, numeric/string/boolean indexing, field access, mutation, reference assignment,
+  1-based array length, and `nil` deletion.
 - Multiple local/global assignment is supported only for `success, value = coroutine.resume(handle)`.
 
 ### Expressions
@@ -24,7 +25,7 @@
 - Concatenation: `..`.
 - Comparisons: `==`, `~=`, `<`, `>`, `<=`, and `>=`.
 - Logic: `and`, `or`, and `not`.
-- Unary minus and string length (`#identifier`).
+- Unary minus and string/table length (`#expression`).
 - Parenthesized expressions and nested named-function calls.
 
 Operator precedence and right associativity for exponentiation and concatenation are preserved by the parser. Target
@@ -38,8 +39,7 @@ numeric behavior still follows the destination shell, as described below.
 - Function calls and expression statements.
 - `if`, `elseif`, `else`, and nested conditional blocks.
 - `while`, `repeat`/`until`, numeric `for`, `break`, and explicit `do` blocks.
-- Generic `for` over `pairs(identifier)` or `ipairs(identifier)`; target-native collection construction is deferred to
-  the table-library phases.
+- Generic `for` over `pairs(tableExpression)` or `ipairs(tableExpression)`, with the iterator expression evaluated once.
 - `print(...)`, mapped to target-native output.
 - Scalar base calls: `tonumber`, `tostring`, and `type` (subject to target value-model differences).
 - Scalar math calls: `abs`, `acos`, `asin`, `atan`, `atan2`, `ceil`, `cos`, `cosh`, `deg`, `exp`, `floor`, `fmod`,
@@ -49,12 +49,15 @@ numeric behavior still follows the destination shell, as described below.
   `reverse`, `sub`, and `upper`.
 - Stream calls: `io.write`, `io.flush`, and scalar line-oriented `io.read`.
 - OS calls: `clock`, scalar `date`, `difftime`, `execute`, `exit`, `getenv`, `remove`, `rename`, `time`, and `tmpname`.
-- Required target helpers are selected by AST analysis and embedded in the generated script.
+- Table calls: `concat`, `insert`, `maxn`, `remove`, and `sort`, including an optional scalar comparator for `sort`.
+- Required target helpers are selected by AST analysis and embedded in the generated script. Coroutine, closure-call,
+  and Bash arithmetic runtime fragments are omitted unless the generated code needs them.
 - Short and long comments are ignored by the parser.
 
 ### Not supported in alpha
 
-- Table constructors, indexing, field access, methods, metatables, object-style calls, and the mutable `table` library.
+- Method syntax, metatables, object-style calls, table keys outside the scalar alpha value model, and multiple results
+  expanded from the last sequence-constructor field.
 - Assignment to captured closure variables, recursive local closures with captures, varargs, and general multiple
   returns.
 - Multiple expressions on the right side of declarations or assignments.
@@ -103,6 +106,8 @@ control flow or local declarations in workers, `wrap`, `status`, arbitrary sched
 - Strings are single-quoted safely, while concatenation joins quoted fragments and variable expansions.
 - Math helpers use the standard `awk` utility. OS helpers may use `date`, `rm`, `mv`, or `mktemp` only when the
   corresponding source call is present.
+- Tables are opaque handles backed by a private `mktemp` directory; generated scripts use `mkdir`/`rm` for mutation
+  and clean the directory through an exit trap.
 
 Known semantic differences:
 
@@ -110,6 +115,9 @@ Known semantic differences:
 - Bash closure captures are read-only and use an internal field separator; capture values containing that reserved
   separator are not portable.
 - Shell variables do not preserve Lua value types.
+- Table entries retain explicit key tags. The resolver preserves literal and simple local key types; an otherwise
+  unknown Bash key expression is inferred at runtime, so a numeric-looking string received through an untyped
+  function parameter can still be treated as a numeric key.
 - Generated condition checks approximate truthiness. In particular, empty strings are false-like in generated Bash,
   while Lua treats an empty string as true.
 - Exit statuses and stdout are separate in Bash, so Luash uses stdout for ordinary function values.
@@ -125,9 +133,10 @@ Known semantic differences:
 - Comparisons map to `-eq`, `-ne`, `-lt`, `-gt`, `-le`, and `-ge`.
 - Concatenation maps to `+`; exponentiation maps to `[Math]::Pow`.
 - Booleans and `nil` map to `$true`, `$false`, and `$null`.
-- String length maps to `.Length`.
+- String/table length maps through a generated type-aware helper.
 - Coroutine handles use generated hashtables and dynamically dispatched worker functions.
 - Anonymous closures use generated hashtables containing their function name and capture environment.
+- Tables use wrapper hashtables with case-sensitive .NET dictionaries for typed entries and preserve object identity.
 - Standard-library helpers use built-in PowerShell commands and .NET classes and are injected only when referenced.
 
 Known semantic differences:

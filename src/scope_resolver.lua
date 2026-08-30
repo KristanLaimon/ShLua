@@ -100,16 +100,54 @@ end
 function ScopeResolver:resolveExpression(node)
     if not node then
         return
+    elseif node.type == "Literal" then
+        node.staticType = node.value == nil and "nil" or type(node.value)
     elseif node.type == "Identifier" then
         local binding = self:resolveName(node.name)
         node.resolvedName = binding.resolvedName
         node.bindingKind = binding.kind
         node.isLocal = binding.isLocal
+        node.staticType = binding.valueType
     elseif node.type == "UnaryExpr" then
         self:resolveExpression(node.operand)
+        if node.operator == "-" or node.operator == "#" then
+            node.staticType = "number"
+        elseif node.operator == "not" then
+            node.staticType = "boolean"
+        end
     elseif node.type == "BinaryExpr" then
         self:resolveExpression(node.left)
         self:resolveExpression(node.right)
+        if
+            node.operator == "+"
+            or node.operator == "-"
+            or node.operator == "*"
+            or node.operator == "/"
+            or node.operator == "%"
+            or node.operator == "^"
+        then
+            node.staticType = "number"
+        elseif node.operator == ".." then
+            node.staticType = "string"
+        elseif
+            node.operator == "=="
+            or node.operator == "~="
+            or node.operator == "<"
+            or node.operator == ">"
+            or node.operator == "<="
+            or node.operator == ">="
+        then
+            node.staticType = "boolean"
+        end
+    elseif node.type == "IndexExpr" then
+        self:resolveExpression(node.table)
+        self:resolveExpression(node.key)
+    elseif node.type == "TableConstructor" then
+        for _, field in ipairs(node.fields) do
+            self:resolveExpression(field.key)
+            self:resolveExpression(field.value)
+        end
+        node.staticType = "table"
     elseif node.type == "CallExpr" then
         if not node.callee:find("%.") then
             local binding = self:resolveName(node.callee)
@@ -119,6 +157,11 @@ function ScopeResolver:resolveExpression(node)
         end
         for _, argument in ipairs(node.args) do
             self:resolveExpression(argument)
+        end
+        if node.callee == "tostring" or node.callee == "type" or node.callee == "table.concat" then
+            node.staticType = "string"
+        elseif node.callee == "tonumber" or node.callee == "table.maxn" then
+            node.staticType = "number"
         end
     elseif node.type == "FunctionExpr" then
         self:resolveFunction(node)
@@ -155,6 +198,7 @@ function ScopeResolver:resolveStatement(statement)
     if statement.type == "LocalVarDecl" then
         self:resolveExpression(statement.init)
         local binding = self:declare(statement.name, "variable", true)
+        binding.valueType = statement.init.staticType
         statement.resolvedName = binding.resolvedName
     elseif statement.type == "MultiLocalVarDecl" then
         self:resolveExpression(statement.init)
@@ -166,10 +210,15 @@ function ScopeResolver:resolveStatement(statement)
     elseif statement.type == "AssignmentStmt" then
         self:resolveExpression(statement.init)
         local binding = self:resolveName(statement.name)
+        binding.valueType = statement.init.staticType
         statement.resolvedName = binding.resolvedName
         statement.bindingIsLocal = binding.isLocal
         statement.functionDepth = self.functionDepth
         statement.isCapturedAssignment = binding.isLocal and binding.functionDepth < self.functionDepth
+    elseif statement.type == "TableAssignmentStmt" then
+        self:resolveExpression(statement.table)
+        self:resolveExpression(statement.key)
+        self:resolveExpression(statement.init)
     elseif statement.type == "MultiAssignmentStmt" then
         self:resolveExpression(statement.init)
         statement.resolvedNames = {}

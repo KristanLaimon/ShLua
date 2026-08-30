@@ -106,19 +106,23 @@ Backend validation happens before output is emitted.
 The shared analyzer walks all expressions and statements, including nested function bodies, and records library calls
 and dotted constants. Each backend filters its strategy modules against that result. Serializers embed only the selected
 helper source before user declarations, so generated scripts never load compiler files or shell modules at runtime.
+The backend metadata pass also selects runtime fragments independently: Bash arithmetic, callable/closure dispatch, and
+coroutine support are emitted only when generated code invokes them; PowerShell callable dispatch is likewise omitted
+unless a closure or comparator needs it.
 
 Library modules expose a small data contract: `name`, supported `functions`, optional `constants`, explicit
-`unsupported` reasons, and embeddable `source`. Unsupported multi-return, iterator, file-handle, and table-mutation APIs
-fail during transpilation rather than being emitted with different semantics.
+`unsupported` reasons, and embeddable `source`. Unsupported multi-return, pattern-iterator, and file-handle APIs fail
+during transpilation rather than being emitted with different semantics.
 
 ## 7. Lua AST contract
 
 The parser currently produces:
 
 - Statements: `FunctionDecl`, `IfStmt`, `WhileStmt`, `RepeatStmt`, `NumericForStmt`, `GenericForStmt`, `DoStmt`,
-  `BreakStmt`, `LocalVarDecl`, `AssignmentStmt`, `MultiLocalVarDecl`, `MultiAssignmentStmt`, `ReturnStmt`, and
-  `ExprStmt`.
-- Expressions: `FunctionExpr`, `CallExpr`, `BinaryExpr`, `UnaryExpr`, `Identifier`, and `Literal`.
+  `BreakStmt`, `LocalVarDecl`, `AssignmentStmt`, `TableAssignmentStmt`, `MultiLocalVarDecl`, `MultiAssignmentStmt`,
+  `ReturnStmt`, and `ExprStmt`.
+- Expressions: `FunctionExpr`, `CallExpr`, `BinaryExpr`, `UnaryExpr`, `TableConstructor`, `IndexExpr`, `Identifier`,
+  and `Literal`.
 - `IfStmt` may include `elseifs` and `elseBody`.
 - A dotted supported call such as `coroutine.resume(co)` is represented by a string callee on `CallExpr`.
 
@@ -128,7 +132,18 @@ The scope resolver annotates declarations, identifiers, and call targets with re
 outer lexical bindings read by function expressions and captured named functions. This shared pass keeps both targets
 on the same binding model even though their native shell scope rules differ.
 
-## 8. Coroutine lowering
+## 8. Table lowering
+
+Table variables carry references rather than copied collections. Keys are stored with type tags so numeric and string
+keys with the same spelling remain distinct; sequence constructor fields receive independent 1-based keys. PowerShell
+uses a hashtable wrapper containing ordinal .NET dictionaries. Bash 3.2 has no associative arrays and command
+substitution loses process-local mutation, so Bash uses opaque handles backed by a private temporary directory and
+cleans that directory on script exit. This also lets aliases and tables returned from functions retain mutable identity.
+
+`pairs` snapshots the current encoded-key list and `ipairs` advances from numeric key 1 until the first missing entry.
+The injected table strategy implements `concat`, `insert`, `maxn`, `remove`, and in-place `sort`.
+
+## 9. Coroutine lowering
 
 Alpha coroutines are compiled generators rather than suspended Lua stacks:
 
@@ -142,13 +157,13 @@ Bash stores handle state in generated variables and dispatches through `__luash_
 a hashtable handle and generated worker functions. Names beginning with `__luash_` are reserved for generated runtime
 internals.
 
-## 9. Single-file distribution
+## 10. Single-file distribution
 
 `run_build.lua` wraps every compiler module in `package.preload`, embeds them in `dist/luash.lua`, and appends a small
 dispatcher. Loading that file through `require("luash")` returns the API; executing it runs the CLI. The generated file
 uses only the Lua standard library and must not read modules from the repository at runtime.
 
-## 10. Verification architecture
+## 11. Verification architecture
 
 Compiler tests remain directly under `tests/`. Numbered dependency-free Lua script cases live under `tests/scripts/`
 as `NN_<testName>.test.lua`, progressing from minimal programs to combined complex programs. Each script case writes

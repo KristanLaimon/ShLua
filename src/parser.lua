@@ -100,6 +100,67 @@ function Parser:parseCall(callee)
     return { type = "CallExpr", callee = callee, args = arguments }
 end
 
+local function dottedName(node)
+    if node.type == "Identifier" then
+        return node.name
+    elseif node.type == "IndexExpr" and node.key.type == "Literal" and type(node.key.value) == "string" then
+        local prefix = dottedName(node.table)
+        if prefix then
+            return prefix .. "." .. node.key.value
+        end
+    end
+    return nil
+end
+
+local DOTTED_GLOBALS = {
+    coroutine = true,
+    io = true,
+    math = true,
+    os = true,
+    string = true,
+    table = true,
+}
+
+function Parser:parseTableConstructor()
+    self:expect("OPERATOR", "{")
+    local fields = {}
+    local sequenceIndex = 1
+
+    while self:peek().value ~= "}" do
+        local key
+        local value
+        local implicit = false
+        if self:peek().value == "[" then
+            self:advance()
+            key = self:parseExpression()
+            self:expect("OPERATOR", "]")
+            self:expect("OPERATOR", "=")
+            value = self:parseExpression()
+        elseif self:peek().type == "IDENTIFIER" and self:peek(1) and self:peek(1).value == "=" then
+            key = { type = "Literal", value = self:advance().value }
+            self:advance()
+            value = self:parseExpression()
+        else
+            key = { type = "Literal", value = sequenceIndex }
+            value = self:parseExpression()
+            implicit = true
+            sequenceIndex = sequenceIndex + 1
+        end
+        table.insert(fields, { key = key, value = value, implicit = implicit })
+
+        if self:peek().value ~= "," and self:peek().value ~= ";" then
+            break
+        end
+        self:advance()
+        if self:peek().value == "}" then
+            break
+        end
+    end
+
+    self:expect("OPERATOR", "}")
+    return { type = "TableConstructor", fields = fields }
+end
+
 function Parser:parseParameterList()
     self:expect("OPERATOR", "(")
     local params = {}
@@ -130,33 +191,7 @@ function Parser:parsePrimary()
         error("Parse Error: unexpected end of input in expression")
     end
 
-    if token.type == "NUMBER" then
-        return { type = "Literal", value = tonumber(self:advance().value) }
-    elseif token.type == "STRING" then
-        return { type = "Literal", value = self:advance().value }
-    elseif token.type == "KEYWORD" and (token.value == "true" or token.value == "false") then
-        return { type = "Literal", value = self:advance().value == "true" }
-    elseif token.type == "KEYWORD" and token.value == "nil" then
-        self:advance()
-        return { type = "Literal", value = nil }
-    elseif token.type == "KEYWORD" and token.value == "function" then
-        return self:parseFunctionExpression()
-    elseif token.type == "IDENTIFIER" then
-        local name = self:advance().value
-        while self:peek() and self:peek().value == "." do
-            self:advance()
-            name = name .. "." .. self:expect("IDENTIFIER").value
-        end
-        if self:peek() and self:peek().value == "(" then
-            return self:parseCall(name)
-        end
-        return { type = "Identifier", name = name }
-    elseif token.type == "OPERATOR" and token.value == "(" then
-        self:advance()
-        local expression = self:parseExpression()
-        self:expect("OPERATOR", ")")
-        return expression
-    elseif token.type == "OPERATOR" and (token.value == "-" or token.value == "#") then
+    if token.type == "OPERATOR" and (token.value == "-" or token.value == "#") then
         local operator = self:advance().value
         return { type = "UnaryExpr", operator = operator, operand = self:parseExpression(7) }
     elseif token.type == "KEYWORD" and token.value == "not" then
@@ -164,7 +199,58 @@ function Parser:parsePrimary()
         return { type = "UnaryExpr", operator = "not", operand = self:parseExpression(7) }
     end
 
-    error(string.format("Parse Error: unexpected token in expression: %s '%s'", token.type, token.value))
+    local expression
+    if token.type == "NUMBER" then
+        expression = { type = "Literal", value = tonumber(self:advance().value) }
+    elseif token.type == "STRING" then
+        expression = { type = "Literal", value = self:advance().value }
+    elseif token.type == "KEYWORD" and (token.value == "true" or token.value == "false") then
+        expression = { type = "Literal", value = self:advance().value == "true" }
+    elseif token.type == "KEYWORD" and token.value == "nil" then
+        self:advance()
+        expression = { type = "Literal", value = nil }
+    elseif token.type == "KEYWORD" and token.value == "function" then
+        expression = self:parseFunctionExpression()
+    elseif token.type == "OPERATOR" and token.value == "{" then
+        expression = self:parseTableConstructor()
+    elseif token.type == "IDENTIFIER" then
+        expression = { type = "Identifier", name = self:advance().value }
+    elseif token.type == "OPERATOR" and token.value == "(" then
+        self:advance()
+        expression = self:parseExpression()
+        self:expect("OPERATOR", ")")
+    else
+        error(string.format("Parse Error: unexpected token in expression: %s '%s'", token.type, token.value))
+    end
+
+    while self:peek() do
+        if self:peek().value == "." then
+            self:advance()
+            expression = {
+                type = "IndexExpr",
+                table = expression,
+                key = { type = "Literal", value = self:expect("IDENTIFIER").value },
+            }
+        elseif self:peek().value == "[" then
+            self:advance()
+            expression = { type = "IndexExpr", table = expression, key = self:parseExpression() }
+            self:expect("OPERATOR", "]")
+        elseif self:peek().value == "(" then
+            local callee = dottedName(expression)
+            if not callee then
+                error("Parse Error: calls through indexed expressions are not supported")
+            end
+            expression = self:parseCall(callee)
+        else
+            break
+        end
+    end
+    local name = dottedName(expression)
+    local prefix = name and name:match("^([%a_][%w_]*)%.")
+    if prefix and DOTTED_GLOBALS[prefix] then
+        return { type = "Identifier", name = name }
+    end
+    return expression
 end
 
 function Parser:parseNameList(firstName)
@@ -333,17 +419,26 @@ function Parser:parseStatement()
         end
         return { type = "ReturnStmt", value = self:parseExpression() }
     elseif token.type == "IDENTIFIER" then
-        local nextToken = self:peek(1)
-        if nextToken and (nextToken.value == "=" or nextToken.value == ",") then
-            local names = self:parseNameList(self:advance().value)
+        local expression = self:parseExpression()
+        if self:peek() and self:peek().value == "=" then
+            self:advance()
+            local init = self:parseExpression()
+            if expression.type == "Identifier" then
+                return { type = "AssignmentStmt", name = expression.name, init = init }
+            elseif expression.type == "IndexExpr" then
+                return { type = "TableAssignmentStmt", table = expression.table, key = expression.key, init = init }
+            end
+            error("Parse Error: invalid assignment target")
+        elseif self:peek() and self:peek().value == "," then
+            if expression.type ~= "Identifier" then
+                error("Parse Error: multiple assignment targets must be identifiers")
+            end
+            local names = self:parseNameList(expression.name)
             self:expect("OPERATOR", "=")
             local init = self:parseExpression()
-            if #names == 1 then
-                return { type = "AssignmentStmt", name = names[1], init = init }
-            end
             return { type = "MultiAssignmentStmt", names = names, init = init }
         end
-        return { type = "ExprStmt", expr = self:parseExpression() }
+        return { type = "ExprStmt", expr = expression }
     end
 
     error(string.format("Parse Error: unknown statement token %s '%s' at line %d", token.type, token.value, token.line))

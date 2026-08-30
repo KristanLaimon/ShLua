@@ -107,11 +107,23 @@ __luash_math_log10() {
 }
 
 __luash_math_max() {
-    LC_ALL=C awk 'BEGIN { value = ARGV[1]; for (i = 2; i < ARGC; i++) if (ARGV[i] > value) value = ARGV[i]; print value }' "$@"
+    LC_ALL=C awk '
+        BEGIN {
+            value = ARGV[1]
+            for (i = 2; i < ARGC; i++) if (ARGV[i] > value) value = ARGV[i]
+            print value
+        }
+    ' "$@"
 }
 
 __luash_math_min() {
-    LC_ALL=C awk 'BEGIN { value = ARGV[1]; for (i = 2; i < ARGC; i++) if (ARGV[i] < value) value = ARGV[i]; print value }' "$@"
+    LC_ALL=C awk '
+        BEGIN {
+            value = ARGV[1]
+            for (i = 2; i < ARGC; i++) if (ARGV[i] < value) value = ARGV[i]
+            print value
+        }
+    ' "$@"
 }
 
 __luash_math_pow() {

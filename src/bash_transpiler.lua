@@ -77,6 +77,7 @@ local function collectMetadata(program)
     local closures = {}
     local functionNames = {}
     local capturedFunctionNames = {}
+    local runtime = { arithmetic = false, call = false }
     local visitExpression
     local visitStatements
 
@@ -86,13 +87,40 @@ local function collectMetadata(program)
         elseif node.type == "FunctionExpr" then
             node.closureId = #closures + 1
             table.insert(closures, node)
+            runtime.call = true
             visitStatements(node.body)
         elseif node.type == "BinaryExpr" then
+            if
+                node.operator == "+"
+                or node.operator == "-"
+                or node.operator == "*"
+                or node.operator == "/"
+                or node.operator == "%"
+                or node.operator == "^"
+            then
+                runtime.arithmetic = true
+            end
             visitExpression(node.left)
             visitExpression(node.right)
         elseif node.type == "UnaryExpr" then
+            if
+                node.operator == "-" and not (node.operand.type == "Literal" and type(node.operand.value) == "number")
+            then
+                runtime.arithmetic = true
+            end
             visitExpression(node.operand)
+        elseif node.type == "IndexExpr" then
+            visitExpression(node.table)
+            visitExpression(node.key)
+        elseif node.type == "TableConstructor" then
+            for _, field in ipairs(node.fields) do
+                visitExpression(field.key)
+                visitExpression(field.value)
+            end
         elseif node.type == "CallExpr" then
+            if node.callee == "table.sort" and #node.args == 2 then
+                runtime.call = true
+            end
             for _, argument in ipairs(node.args) do
                 visitExpression(argument)
             end
@@ -110,6 +138,7 @@ local function collectMetadata(program)
                     statement.closureId = #closures + 1
                     table.insert(closures, statement)
                     capturedFunctionNames[name] = true
+                    runtime.call = true
                 else
                     functionNames[name] = true
                 end
@@ -117,6 +146,10 @@ local function collectMetadata(program)
             elseif statement.type == "LocalVarDecl" or statement.type == "AssignmentStmt" then
                 visitExpression(statement.init)
             elseif statement.type == "MultiLocalVarDecl" or statement.type == "MultiAssignmentStmt" then
+                visitExpression(statement.init)
+            elseif statement.type == "TableAssignmentStmt" then
+                visitExpression(statement.table)
+                visitExpression(statement.key)
                 visitExpression(statement.init)
             elseif statement.type == "IfStmt" then
                 visitExpression(statement.condition)
@@ -148,7 +181,7 @@ local function collectMetadata(program)
     end
 
     visitStatements(program.body)
-    return closures, functionNames, capturedFunctionNames
+    return closures, functionNames, capturedFunctionNames, runtime
 end
 
 function BashTranspiler.new()
@@ -205,7 +238,7 @@ end
 function BashTranspiler:translate(luaAST)
     assert(luaAST and luaAST.type == "Program", "BashTranspiler expects a Program AST")
     ScopeResolver.resolve(luaAST)
-    local closures, functionNames, capturedFunctionNames = collectMetadata(luaAST)
+    local closures, functionNames, capturedFunctionNames, runtime = collectMetadata(luaAST)
     local requiredStdlibs = StdlibAnalyzer.analyze(luaAST)
     local stdlibs = {}
     for _, library in ipairs(STDLIBS) do
@@ -213,14 +246,17 @@ function BashTranspiler:translate(luaAST)
             table.insert(stdlibs, library)
         end
     end
+    local workers = self:collectCoroutineWorkers(luaAST)
+    runtime.coroutine = next(workers) ~= nil
     return {
         type = "BashScript",
         program = luaAST,
-        coroutineWorkers = self:collectCoroutineWorkers(luaAST),
+        coroutineWorkers = workers,
         closures = closures,
         functionNames = functionNames,
         capturedFunctionNames = capturedFunctionNames,
         stdlibs = stdlibs,
+        runtime = runtime,
     }
 end
 
@@ -234,6 +270,7 @@ function Generator.new(targetAST)
         functionNames = targetAST.functionNames,
         capturedFunctionNames = targetAST.capturedFunctionNames,
         stdlibs = targetAST.stdlibs,
+        runtime = targetAST.runtime,
         loopId = 0,
         loopDepth = 0,
     }, Generator)
@@ -246,6 +283,20 @@ function Generator:identifierValue(name, kind)
         return shellQuote(name)
     end
     return '"${' .. name .. '}"'
+end
+
+function Generator:tableKeyType(node)
+    local valueType = node.staticType or (node.type == "Literal" and (node.value == nil and "nil" or type(node.value)))
+    if valueType == "nil" then
+        return "z"
+    elseif valueType == "number" then
+        return "n"
+    elseif valueType == "boolean" then
+        return "b"
+    elseif valueType == "string" then
+        return "s"
+    end
+    return ""
 end
 
 function Generator:arithmetic(node)
@@ -350,6 +401,25 @@ function Generator:expression(node)
             error("BashTranspiler Error: unsupported library value '" .. node.name .. "'")
         end
         return self:identifierValue(node.resolvedName or node.name, node.bindingKind)
+    elseif node.type == "TableConstructor" then
+        local arguments = {}
+        for _, field in ipairs(node.fields) do
+            local present = not (field.value.type == "Literal" and field.value.value == nil)
+            table.insert(arguments, shellQuote(self:tableKeyType(field.key)))
+            table.insert(arguments, self:expression(field.key))
+            table.insert(arguments, self:expression(field.value))
+            table.insert(arguments, shellQuote(present and "1" or "0"))
+        end
+        local suffix = #arguments > 0 and " " .. table.concat(arguments, " ") or ""
+        return '"$(__luash_table_new' .. suffix .. ')"'
+    elseif node.type == "IndexExpr" then
+        return '"$(__luash_table_get '
+            .. self:expression(node.table)
+            .. " "
+            .. shellQuote(self:tableKeyType(node.key))
+            .. " "
+            .. self:expression(node.key)
+            .. ')"'
     elseif node.type == "CallExpr" then
         if node.callee == "tostring" and #node.args == 1 then
             return self:expression(node.args[1])
@@ -363,8 +433,8 @@ function Generator:expression(node)
                 return tostring(-node.operand.value)
             end
             return '"$(__luash_arithmetic 0 ' .. shellQuote("-") .. " " .. self:expression(node.operand) .. ')"'
-        elseif node.operator == "#" and node.operand.type == "Identifier" then
-            return '"${#' .. node.operand.name .. '}"'
+        elseif node.operator == "#" then
+            return '"$(__luash_length ' .. self:expression(node.operand) .. ')"'
         elseif node.operator == "not" then
             return "$(if " .. self:condition(node) .. "; then printf true; else printf false; fi)"
         end
@@ -562,6 +632,19 @@ function Generator:statement(statement, level, inFunction)
             inFunction,
             statement.type == "MultiLocalVarDecl"
         )
+    elseif statement.type == "TableAssignmentStmt" then
+        local present = not (statement.init.type == "Literal" and statement.init.value == nil)
+        return indent(level)
+            .. "__luash_table_set "
+            .. self:expression(statement.table)
+            .. " "
+            .. shellQuote(self:tableKeyType(statement.key))
+            .. " "
+            .. self:expression(statement.key)
+            .. " "
+            .. self:expression(statement.init)
+            .. " "
+            .. shellQuote(present and "1" or "0")
     elseif statement.type == "IfStmt" then
         local output = { indent(level) .. "if " .. self:condition(statement.condition) .. "; then" }
         for _, bodyStatement in ipairs(statement.body) do
@@ -644,38 +727,99 @@ function Generator:statement(statement, level, inFunction)
             iterator.type ~= "CallExpr"
             or (iterator.callee ~= "pairs" and iterator.callee ~= "ipairs")
             or #iterator.args ~= 1
-            or iterator.args[1].type ~= "Identifier"
         then
-            error("BashTranspiler Error: generic for currently supports pairs(identifier) or ipairs(identifier)")
+            error("BashTranspiler Error: generic for currently supports pairs(table) or ipairs(table)")
         end
         self.loopId = self.loopId + 1
         local indexName = "__luash_for_index_" .. self.loopId
-        local arrayName = iterator.args[1].resolvedName or iterator.args[1].name
         local collectionName = "__luash_for_collection_" .. self.loopId
+        local countName = "__luash_for_count_" .. self.loopId
         local names = statement.resolvedNames or statement.names
         local modifier = inFunction and "local " or ""
-        local output = {
-            indent(level) .. modifier .. collectionName .. '=("${' .. arrayName .. '[@]}")',
-            indent(level) .. "for " .. indexName .. ' in "${!' .. collectionName .. '[@]}"; do',
-        }
-        if names[1] then
-            table.insert(output, indent(level + 1) .. modifier .. names[1] .. "=$(($" .. indexName .. " + 1))")
-        end
-        if names[2] then
+        local output = { indent(level) .. modifier .. collectionName .. "=" .. self:expression(iterator.args[1]) }
+        if iterator.callee == "ipairs" then
+            table.insert(output, indent(level) .. modifier .. indexName .. "=1")
             table.insert(
                 output,
-                indent(level + 1) .. modifier .. names[2] .. '="${' .. collectionName .. "[$" .. indexName .. ']}"'
+                indent(level) .. 'while __luash_table_contains "$' .. collectionName .. '" n "$' .. indexName .. '"; do'
             )
+            if names[1] then
+                table.insert(output, indent(level + 1) .. modifier .. names[1] .. '="$' .. indexName .. '"')
+            end
+            if names[2] then
+                table.insert(
+                    output,
+                    indent(level + 1)
+                        .. modifier
+                        .. names[2]
+                        .. '="$(__luash_table_get "$'
+                        .. collectionName
+                        .. '" n "$'
+                        .. indexName
+                        .. '")"'
+                )
+            end
+            for index = 3, #names do
+                table.insert(output, indent(level + 1) .. modifier .. names[index] .. "=''")
+            end
+            self.loopDepth = self.loopDepth + 1
+            for _, bodyStatement in ipairs(statement.body) do
+                table.insert(output, self:statement(bodyStatement, level + 1, inFunction))
+            end
+            self.loopDepth = self.loopDepth - 1
+            table.insert(output, indent(level + 1) .. indexName .. "=$(($" .. indexName .. " + 1))")
+            table.insert(output, indent(level) .. "done")
+        else
+            table.insert(output, indent(level) .. modifier .. countName .. '="$(<"$' .. collectionName .. '/count")"')
+            table.insert(output, indent(level) .. modifier .. indexName .. "=1")
+            table.insert(output, indent(level) .. 'while [ "$' .. indexName .. '" -le "$' .. countName .. '" ]; do')
+            table.insert(
+                output,
+                indent(level + 1)
+                    .. 'if __luash_table_entry_exists "$'
+                    .. collectionName
+                    .. '" "$'
+                    .. indexName
+                    .. '"; then'
+            )
+            if names[1] then
+                table.insert(
+                    output,
+                    indent(level + 2)
+                        .. modifier
+                        .. names[1]
+                        .. '="$(__luash_table_entry_key "$'
+                        .. collectionName
+                        .. '" "$'
+                        .. indexName
+                        .. '")"'
+                )
+            end
+            if names[2] then
+                table.insert(
+                    output,
+                    indent(level + 2)
+                        .. modifier
+                        .. names[2]
+                        .. '="$(__luash_table_entry_value "$'
+                        .. collectionName
+                        .. '" "$'
+                        .. indexName
+                        .. '")"'
+                )
+            end
+            for index = 3, #names do
+                table.insert(output, indent(level + 2) .. modifier .. names[index] .. "=''")
+            end
+            self.loopDepth = self.loopDepth + 1
+            for _, bodyStatement in ipairs(statement.body) do
+                table.insert(output, self:statement(bodyStatement, level + 2, inFunction))
+            end
+            self.loopDepth = self.loopDepth - 1
+            table.insert(output, indent(level + 1) .. "fi")
+            table.insert(output, indent(level + 1) .. indexName .. "=$(($" .. indexName .. " + 1))")
+            table.insert(output, indent(level) .. "done")
         end
-        for index = 3, #names do
-            table.insert(output, indent(level + 1) .. modifier .. names[index] .. "=''")
-        end
-        self.loopDepth = self.loopDepth + 1
-        for _, bodyStatement in ipairs(statement.body) do
-            table.insert(output, self:statement(bodyStatement, level + 1, inFunction))
-        end
-        self.loopDepth = self.loopDepth - 1
-        table.insert(output, indent(level) .. "done")
         return table.concat(output, "\n")
     elseif statement.type == "DoStmt" then
         local output = {}
@@ -705,7 +849,7 @@ function Generator:statement(statement, level, inFunction)
     error("BashTranspiler Error: unsupported statement " .. tostring(statement.type))
 end
 
-function Generator:runtime()
+function Generator:arithmeticRuntime()
     return [[__luash_arithmetic() {
     LC_ALL=C awk -v left="$1" -v operator="$2" -v right="$3" '
         BEGIN {
@@ -718,9 +862,11 @@ function Generator:runtime()
             printf "%.15g\n", result
         }
     ' </dev/null
-}
+}]]
+end
 
-__luash_closure_separator="$(printf '\034')"
+function Generator:callRuntime()
+    return [[__luash_closure_separator="$(printf '\034')"
 __luash_call() {
     local __luash_callable="$1"
     shift
@@ -738,9 +884,11 @@ __luash_call() {
             "$__luash_callable" "${__luash_call_args[@]}"
             ;;
     esac
-}
+}]]
+end
 
-__luash_coroutine_ok=''
+function Generator:coroutineRuntime()
+    return [[__luash_coroutine_ok=''
 __luash_coroutine_value=''
 __luash_coroutine_resume() {
     local __handle="$1"
@@ -756,7 +904,19 @@ __luash_coroutine_resume() {
 end
 
 function Generator:generate(program)
-    local output = { "#!/usr/bin/env bash", "", self:runtime(), "" }
+    local output = { "#!/usr/bin/env bash", "" }
+    if self.runtime.arithmetic then
+        table.insert(output, self:arithmeticRuntime())
+        table.insert(output, "")
+    end
+    if self.runtime.call then
+        table.insert(output, self:callRuntime())
+        table.insert(output, "")
+    end
+    if self.runtime.coroutine then
+        table.insert(output, self:coroutineRuntime())
+        table.insert(output, "")
+    end
     for _, library in ipairs(self.stdlibs) do
         table.insert(output, library.source)
         table.insert(output, "")

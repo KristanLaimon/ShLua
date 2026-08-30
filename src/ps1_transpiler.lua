@@ -77,6 +77,7 @@ local function collectMetadata(program)
     local closures = {}
     local functionNames = {}
     local capturedFunctionNames = {}
+    local runtime = { call = false }
     local visitExpression
     local visitStatements
 
@@ -86,13 +87,25 @@ local function collectMetadata(program)
         elseif node.type == "FunctionExpr" then
             node.closureId = #closures + 1
             table.insert(closures, node)
+            runtime.call = true
             visitStatements(node.body)
         elseif node.type == "BinaryExpr" then
             visitExpression(node.left)
             visitExpression(node.right)
         elseif node.type == "UnaryExpr" then
             visitExpression(node.operand)
+        elseif node.type == "IndexExpr" then
+            visitExpression(node.table)
+            visitExpression(node.key)
+        elseif node.type == "TableConstructor" then
+            for _, field in ipairs(node.fields) do
+                visitExpression(field.key)
+                visitExpression(field.value)
+            end
         elseif node.type == "CallExpr" then
+            if node.callee == "table.sort" and #node.args == 2 then
+                runtime.call = true
+            end
             for _, argument in ipairs(node.args) do
                 visitExpression(argument)
             end
@@ -110,6 +123,7 @@ local function collectMetadata(program)
                     statement.closureId = #closures + 1
                     table.insert(closures, statement)
                     capturedFunctionNames[name] = true
+                    runtime.call = true
                 else
                     functionNames[name] = true
                 end
@@ -124,6 +138,10 @@ local function collectMetadata(program)
                 if statement.elseBody then
                     visitStatements(statement.elseBody)
                 end
+            elseif statement.type == "TableAssignmentStmt" then
+                visitExpression(statement.table)
+                visitExpression(statement.key)
+                visitExpression(statement.init)
             elseif
                 statement.type == "NumericForStmt"
                 or statement.type == "GenericForStmt"
@@ -145,7 +163,7 @@ local function collectMetadata(program)
     end
 
     visitStatements(program.body)
-    return closures, functionNames, capturedFunctionNames
+    return closures, functionNames, capturedFunctionNames, runtime
 end
 
 function PS1Transpiler.new()
@@ -202,7 +220,7 @@ end
 function PS1Transpiler:translate(luaAST)
     assert(luaAST and luaAST.type == "Program", "PS1Transpiler expects a Program AST")
     ScopeResolver.resolve(luaAST)
-    local closures, functionNames, capturedFunctionNames = collectMetadata(luaAST)
+    local closures, functionNames, capturedFunctionNames, runtime = collectMetadata(luaAST)
     local requiredStdlibs = StdlibAnalyzer.analyze(luaAST)
     local stdlibs = {}
     for _, library in ipairs(STDLIBS) do
@@ -210,14 +228,17 @@ function PS1Transpiler:translate(luaAST)
             table.insert(stdlibs, library)
         end
     end
+    local workers = self:collectCoroutineWorkers(luaAST)
+    runtime.coroutine = next(workers) ~= nil
     return {
         type = "PS1Script",
         program = luaAST,
-        coroutineWorkers = self:collectCoroutineWorkers(luaAST),
+        coroutineWorkers = workers,
         closures = closures,
         functionNames = functionNames,
         capturedFunctionNames = capturedFunctionNames,
         stdlibs = stdlibs,
+        runtime = runtime,
     }
 end
 
@@ -231,9 +252,24 @@ function Generator.new(targetAST)
         functionNames = targetAST.functionNames,
         capturedFunctionNames = targetAST.capturedFunctionNames,
         stdlibs = targetAST.stdlibs,
+        runtime = targetAST.runtime,
         loopId = 0,
         loopDepth = 0,
     }, Generator)
+end
+
+function Generator:tableKeyType(node)
+    local valueType = node.staticType or (node.type == "Literal" and (node.value == nil and "nil" or type(node.value)))
+    if valueType == "nil" then
+        return "z"
+    elseif valueType == "number" then
+        return "n"
+    elseif valueType == "boolean" then
+        return "b"
+    elseif valueType == "string" then
+        return "s"
+    end
+    return ""
 end
 
 function Generator:command(node)
@@ -284,6 +320,32 @@ function Generator:expression(node)
             return psQuote(name)
         end
         return "$" .. name
+    elseif node.type == "TableConstructor" then
+        local expressions = { "$__luash_table_value = __luash_table_new" }
+        for _, field in ipairs(node.fields) do
+            local present = not (field.value.type == "Literal" and field.value.value == nil)
+            table.insert(
+                expressions,
+                "__luash_table_set $__luash_table_value "
+                    .. psQuote(self:tableKeyType(field.key))
+                    .. " "
+                    .. self:expression(field.key)
+                    .. " "
+                    .. self:expression(field.value)
+                    .. " "
+                    .. (present and "$true" or "$false")
+            )
+        end
+        table.insert(expressions, "$__luash_table_value")
+        return "(& { " .. table.concat(expressions, "; ") .. " })"
+    elseif node.type == "IndexExpr" then
+        return "(__luash_table_get "
+            .. self:expression(node.table)
+            .. " "
+            .. psQuote(self:tableKeyType(node.key))
+            .. " "
+            .. self:expression(node.key)
+            .. ")"
     elseif node.type == "CallExpr" then
         if node.callee == "tostring" and #node.args == 1 then
             return "([string] " .. self:expression(node.args[1]) .. ")"
@@ -297,7 +359,7 @@ function Generator:expression(node)
         elseif node.operator == "not" then
             return "(-not " .. self:expression(node.operand) .. ")"
         elseif node.operator == "#" then
-            return "(" .. self:expression(node.operand) .. ").Length"
+            return "(__luash_length " .. self:expression(node.operand) .. ")"
         end
     elseif node.type == "BinaryExpr" then
         if node.operator == "^" then
@@ -499,6 +561,19 @@ function Generator:statement(statement, level)
             error("PS1Transpiler Error: multiple assignment is supported only for coroutine.resume")
         end
         return self:coroutineResume(statement.resolvedNames or statement.names, statement.init, level)
+    elseif statement.type == "TableAssignmentStmt" then
+        local present = not (statement.init.type == "Literal" and statement.init.value == nil)
+        return indent(level)
+            .. "__luash_table_set "
+            .. self:expression(statement.table)
+            .. " "
+            .. psQuote(self:tableKeyType(statement.key))
+            .. " "
+            .. self:expression(statement.key)
+            .. " "
+            .. self:expression(statement.init)
+            .. " "
+            .. (present and "$true" or "$false")
     elseif statement.type == "IfStmt" then
         local output = { indent(level) .. "if (" .. self:expression(statement.condition) .. ") {" }
         for _, bodyStatement in ipairs(statement.body) do
@@ -577,9 +652,8 @@ function Generator:statement(statement, level)
             iterator.type ~= "CallExpr"
             or (iterator.callee ~= "pairs" and iterator.callee ~= "ipairs")
             or #iterator.args ~= 1
-            or iterator.args[1].type ~= "Identifier"
         then
-            error("PS1Transpiler Error: generic for currently supports pairs(identifier) or ipairs(identifier)")
+            error("PS1Transpiler Error: generic for currently supports pairs(table) or ipairs(table)")
         end
         self.loopId = self.loopId + 1
         local itemName = "__luash_for_item_" .. self.loopId
@@ -596,33 +670,45 @@ function Generator:statement(statement, level)
                 indent(level)
                     .. "for ($"
                     .. indexName
-                    .. " = 0; $"
-                    .. indexName
-                    .. " -lt "
+                    .. " = 1; (__luash_table_contains "
                     .. collection
-                    .. ".Count; $"
+                    .. " 'n' $"
+                    .. indexName
+                    .. "); $"
                     .. indexName
                     .. "++) {"
             )
             if names[1] then
-                table.insert(output, indent(level + 1) .. "$" .. names[1] .. " = $" .. indexName .. " + 1")
+                table.insert(output, indent(level + 1) .. "$" .. names[1] .. " = $" .. indexName)
             end
             if names[2] then
                 table.insert(
                     output,
-                    indent(level + 1) .. "$" .. names[2] .. " = " .. collection .. "[$" .. indexName .. "]"
+                    indent(level + 1)
+                        .. "$"
+                        .. names[2]
+                        .. " = __luash_table_get "
+                        .. collection
+                        .. " 'n' $"
+                        .. indexName
                 )
             end
         else
             table.insert(
                 output,
-                indent(level) .. "foreach ($" .. itemName .. " in " .. collection .. ".GetEnumerator()) {"
+                indent(level) .. "foreach ($" .. itemName .. " in @(" .. collection .. ".Entries.Keys)) {"
             )
             if names[1] then
-                table.insert(output, indent(level + 1) .. "$" .. names[1] .. " = $" .. itemName .. ".Key")
+                table.insert(
+                    output,
+                    indent(level + 1) .. "$" .. names[1] .. " = " .. collection .. ".Keys[$" .. itemName .. "]"
+                )
             end
             if names[2] then
-                table.insert(output, indent(level + 1) .. "$" .. names[2] .. " = $" .. itemName .. ".Value")
+                table.insert(
+                    output,
+                    indent(level + 1) .. "$" .. names[2] .. " = " .. collection .. ".Entries[$" .. itemName .. "]"
+                )
             end
         end
         for index = 3, #names do
@@ -658,17 +744,22 @@ function Generator:statement(statement, level)
     error("PS1Transpiler Error: unsupported statement " .. tostring(statement.type))
 end
 
-function Generator:generate(program)
-    local output = {
-        [=[function __luash_call {
+function Generator:callRuntime()
+    return [=[function __luash_call {
     param($Callable, [object[]] $Arguments)
     if ($Callable -is [hashtable] -and $Callable.Function) {
         return & $Callable.Function $Callable @Arguments
     }
     return & $Callable @Arguments
-}]=],
-        "",
-    }
+}]=]
+end
+
+function Generator:generate(program)
+    local output = {}
+    if self.runtime.call then
+        table.insert(output, self:callRuntime())
+        table.insert(output, "")
+    end
     for _, library in ipairs(self.stdlibs) do
         table.insert(output, library.source)
         table.insert(output, "")

@@ -17,8 +17,9 @@
 - [x] Phase 3: execute generated function/closure fixtures on installed shells.
 - [x] Update compatibility and architecture documentation for the Phase 0–3 subset and known limits.
 - [x] Run `lua run_build.lua`, `lua run_tests.lua`, and `lua run_check.lua` successfully.
+- [x] Emit coroutine, callable-dispatch, and Bash arithmetic runtime fragments only when source lowering needs them.
 
-## Completed work: Phases 4, 5, 7, and the Phase 8 fixture
+## Completed work: Phases 4–8
 
 - [x] Phase 4: add Bash math/string strategy modules and scalar helpers.
 - [x] Phase 4: execute generated Bash math/string cases under Git-for-Windows Bash.
@@ -32,18 +33,20 @@
 - [x] Fix value-returning `and`/`or`, PowerShell string concatenation, and Bash decimal arithmetic exposed by the fixture.
 - [x] Make Windows tests find Git Bash outside `PATH` and distinguish launch failures from missing interpreters.
 
-## Remaining Phase 6 work
+## Completed Phase 6 table work
 
-- [ ] Parse sequence/keyed table constructors, indexing, and field access with Lua 5.1 semantics.
-- [ ] Define a cross-target table value representation that preserves numeric and string keys.
-- [ ] Implement `table.concat`, `table.insert`, `table.maxn`, `table.remove`, and `table.sort` for both targets.
-- [ ] Extend generic `pairs`/`ipairs` lowering to the shared table representation.
-- [ ] Decide the next alpha boundary for file handles, Lua string patterns/iterators, and multi-return library APIs;
+- [x] Parse sequence/keyed table constructors, indexing, field access, and `nil` deletion with Lua 5.1 semantics.
+- [x] Define cross-target mutable table representations that preserve identity and typed numeric/string keys.
+- [x] Implement `table.concat`, `table.insert`, `table.maxn`, `table.remove`, and `table.sort` for both targets.
+- [x] Extend generic `pairs`/`ipairs` lowering to the shared table representation.
+- [x] Decide the next alpha boundary for file handles, Lua string patterns/iterators, and multi-return library APIs;
       current calls reject clearly.
+- [x] Execute construction, aliasing, function-return, mutation, sorting, nesting, and iteration fixtures on both shells.
+- [x] Run `lua run_build.lua`, `lua run_tests.lua`, and `lua run_check.lua` successfully.
 
-## Next session: Phase 6 tables
+## Next session: post-roadmap maintenance
 
-- Read the Lua 5.1 table-constructor/indexing and table-library manual sections.
-- Add parser/resolver fixtures for sequence and keyed table values before selecting the shell encoding.
-- Preserve one-time evaluation, mutable identity, 1-based indices, and `nil` deletion semantics in the design.
-- Execute generated mutation/iteration cases on both installed shells, then rerun all three release gates.
+- Treat Phases 0–8 as complete for the documented alpha subset.
+- Keep file handles, Lua patterns/string iterators, general multiple returns, methods/metatables, and dynamically typed
+  Bash keys crossing untyped function parameters as explicit follow-up boundaries.
+- Add a numbered real-shell fixture for future target behavior changes and rerun all three release gates.

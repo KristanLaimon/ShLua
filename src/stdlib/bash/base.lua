@@ -72,6 +72,8 @@ __luash_type() {
         printf 'boolean\n'
     elif [[ "$__luash_value" =~ ^[-+]?[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?$ ]]; then
         printf 'number\n'
+    elif [ -d "$__luash_value" ] && [ -f "$__luash_value/count" ]; then
+        printf 'table\n'
     elif [[ "$__luash_value" = __luash_closure_* ]] || declare -F "$__luash_value" >/dev/null 2>&1; then
         printf 'function\n'
     else

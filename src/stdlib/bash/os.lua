@@ -20,7 +20,9 @@ M.unsupported = {
 M.source = [[__luash_os_clock_started="${SECONDS:-0}"
 
 __luash_os_clock() {
-    LC_ALL=C awk -v now="${SECONDS:-0}" -v started="$__luash_os_clock_started" 'BEGIN { printf "%.2f\n", now - started }' </dev/null
+    LC_ALL=C awk -v now="${SECONDS:-0}" -v started="$__luash_os_clock_started" '
+        BEGIN { printf "%.2f\n", now - started }
+    ' </dev/null
 }
 
 __luash_os_date() {

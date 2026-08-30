@@ -300,6 +300,30 @@ end
             expect(ast.body[1].init.body[1].value.type).toBe("FunctionExpr")
         end)
     end)
+
+    describe("Phase 6 tables", function()
+        it("parses sequence and keyed constructors", function()
+            local ast = parse([[local values = { "first", name = "Luash", [10] = "ten"; "second", }]])
+            local constructor = ast.body[1].init
+            expect(constructor.type).toBe("TableConstructor")
+            expect(#constructor.fields).toBe(4)
+            expect(constructor.fields[1].key.value).toBe(1)
+            expect(constructor.fields[2].key.value).toBe("name")
+            expect(constructor.fields[3].key.value).toBe(10)
+            expect(constructor.fields[4].key.value).toBe(2)
+        end)
+
+        it("parses chained indexing, field access, and table assignment", function()
+            local ast = parse([[local value = outer.inner[key]
+outer.inner[key] = value
+outer.name = "updated"]])
+            expect(ast.body[1].init.type).toBe("IndexExpr")
+            expect(ast.body[1].init.table.type).toBe("IndexExpr")
+            expect(ast.body[2].type).toBe("TableAssignmentStmt")
+            expect(ast.body[2].table.type).toBe("IndexExpr")
+            expect(ast.body[3].key.value).toBe("name")
+        end)
+    end)
 end)
 
 lust.report()

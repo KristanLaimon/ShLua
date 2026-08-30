@@ -37,6 +37,7 @@ local scriptTestFiles = {
     "tests/scripts/08_bash_stdlib.test.lua",
     "tests/scripts/09_powershell_stdlib.test.lua",
     "tests/scripts/10_hard_test.test.lua",
+    "tests/scripts/11_tables.test.lua",
 }
 
 local testFiles = {
