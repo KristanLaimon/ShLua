@@ -20,7 +20,7 @@
 
 ---
 
-**ShLua** lets you write your script logic once in clean Lua and automatically transpile it to native, zero-dependency **Bash** and **PowerShell** scripts. No new syntax or DSL to learn, no forcing other script-interpreted runtimes onto your users—just fast, cross-platform scripts that run out-of-the-box in any terminal or CI pipeline.
+**ShLua** lets you write your script logic once in clean Lua and transpile it to native, zero-dependency **Bash** and **PowerShell** scripts. No new syntax or DSL to learn, no forcing other script-interpreted runtimes onto your users—just fast, cross-platform scripts that run out-of-the-box in any terminal or CI pipeline.
 
 ---
 
