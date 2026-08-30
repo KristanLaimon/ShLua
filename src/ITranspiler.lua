@@ -27,9 +27,14 @@
 --    @return string Serialized executable source code text.
 -- ============================================================================
 
+---@class TranspilerInterface
 local TranspilerInterface = {}
 
 --- Optional runtime validator to ensure a module satisfies the contract
+---Validates that a target module satisfies the ShLua transpiler contract.
+---@param module ShLuaTranspilerModule Candidate target module.
+---@param moduleName string Human-readable target name for diagnostics.
+---@return nil
 function TranspilerInterface.validate(module, moduleName)
     assert(type(module) == "table", moduleName .. " must be a table")
     assert(type(module.name) == "string", moduleName .. " missing '.name' string")

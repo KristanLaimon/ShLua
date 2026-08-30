@@ -1,17 +1,28 @@
 -- Recursive-descent parser for the Lua subset supported by ShLua.
 
+---@class Parser
+---@field tokens ShLuaToken[] Token stream ending in EOF.
+---@field pos integer One-based token cursor.
 local Parser = {}
 Parser.__index = Parser
 
+---Creates a recursive-descent parser for a token stream.
+---@param tokens ShLuaToken[] Tokens produced by `Lexer:tokenize`.
+---@return Parser parser New parser instance.
 function Parser.new(tokens)
     return setmetatable({ tokens = tokens, pos = 1 }, Parser)
 end
 
+---Returns a token at a relative cursor offset.
+---@param offset? integer Offset from the current token.
+---@return ShLuaToken? token Token at the requested position.
 function Parser:peek(offset)
     offset = offset or 0
     return self.tokens[self.pos + offset]
 end
 
+---Consumes and returns the current non-EOF token.
+---@return ShLuaToken? token Consumed token, or EOF when present.
 function Parser:advance()
     local token = self:peek()
     if token and token.type ~= "EOF" then
@@ -20,6 +31,10 @@ function Parser:advance()
     return token
 end
 
+---Consumes a token only when it matches the expected type and optional value.
+---@param tokenType ShLuaTokenType Expected token category.
+---@param value? string Expected token text.
+---@return ShLuaToken token Matching token.
 function Parser:expect(tokenType, value)
     local token = self:peek()
     if not token or token.type ~= tokenType or (value and token.value ~= value) then
@@ -37,6 +52,9 @@ function Parser:expect(tokenType, value)
     return self:advance()
 end
 
+---Returns the precedence assigned to an infix operator.
+---@param operator string Lua operator.
+---@return integer? precedence Operator precedence, if supported.
 function Parser:getOperatorPrecedence(operator)
     local precedences = {
         ["or"] = 1,
@@ -58,6 +76,9 @@ function Parser:getOperatorPrecedence(operator)
     return precedences[operator]
 end
 
+---Parses an expression using precedence climbing.
+---@param minPrecedence? integer Lowest operator precedence to consume.
+---@return ShLuaExpression expression Parsed expression node.
 function Parser:parseExpression(minPrecedence)
     minPrecedence = minPrecedence or 0
     local left = self:parsePrimary()
@@ -84,6 +105,9 @@ function Parser:parseExpression(minPrecedence)
     return left
 end
 
+---Parses a call after its dotted callee name has been recognized.
+---@param callee string Fully qualified callee name.
+---@return ShLuaExpression call Call expression node.
 function Parser:parseCall(callee)
     self:expect("OPERATOR", "(")
     local arguments = {}
@@ -100,6 +124,9 @@ function Parser:parseCall(callee)
     return { type = "CallExpr", callee = callee, args = arguments }
 end
 
+---Recognizes a one-string-argument `require` call used in a local declaration.
+---@param expression ShLuaExpression Expression to inspect.
+---@return string? moduleName Required module name.
 local function requireModule(expression)
     if expression.type ~= "CallExpr" or expression.callee ~= "require" or #expression.args ~= 1 then
         return nil
@@ -111,6 +138,9 @@ local function requireModule(expression)
     return argument.value
 end
 
+---Converts an identifier/index chain into a dotted name when possible.
+---@param node ShLuaExpression Expression to inspect.
+---@return string? name Dotted name for a static field chain.
 local function dottedName(node)
     if node.type == "Identifier" then
         return node.name
@@ -132,6 +162,8 @@ local DOTTED_GLOBALS = {
     table = true,
 }
 
+---Parses a Lua table constructor and its keyed or sequential fields.
+---@return ShLuaExpression constructor Table constructor node.
 function Parser:parseTableConstructor()
     self:expect("OPERATOR", "{")
     local fields = {}
@@ -172,6 +204,8 @@ function Parser:parseTableConstructor()
     return { type = "TableConstructor", fields = fields }
 end
 
+---Parses a comma-separated function parameter list.
+---@return string[] parameters Parameter names in declaration order.
 function Parser:parseParameterList()
     self:expect("OPERATOR", "(")
     local params = {}
@@ -188,6 +222,8 @@ function Parser:parseParameterList()
     return params
 end
 
+---Parses an anonymous function expression.
+---@return ShLuaExpression expression Function expression node.
 function Parser:parseFunctionExpression()
     self:expect("KEYWORD", "function")
     local params = self:parseParameterList()
@@ -196,6 +232,8 @@ function Parser:parseFunctionExpression()
     return { type = "FunctionExpr", params = params, body = body }
 end
 
+---Parses a literal, identifier, unary expression, or postfix expression.
+---@return ShLuaExpression expression Parsed primary expression.
 function Parser:parsePrimary()
     local token = self:peek()
     if not token then
@@ -280,6 +318,9 @@ function Parser:parsePrimary()
     return expression
 end
 
+---Parses the remaining identifiers in a comma-separated name list.
+---@param firstName string First already-consumed name.
+---@return string[] names Full name list.
 function Parser:parseNameList(firstName)
     local names = { firstName }
     while self:peek() and self:peek().value == "," do
@@ -289,6 +330,8 @@ function Parser:parseNameList(firstName)
     return names
 end
 
+---Parses an if/elseif/else statement and nested blocks.
+---@return ShLuaStatement statement If statement node.
 function Parser:parseIfStatement()
     self:expect("KEYWORD", "if")
     local condition = self:parseExpression()
@@ -321,6 +364,8 @@ function Parser:parseIfStatement()
     return statement
 end
 
+---Parses a while loop.
+---@return ShLuaStatement statement While statement node.
 function Parser:parseWhileStatement()
     self:expect("KEYWORD", "while")
     local condition = self:parseExpression()
@@ -330,6 +375,8 @@ function Parser:parseWhileStatement()
     return { type = "WhileStmt", condition = condition, body = body }
 end
 
+---Parses a repeat/until loop.
+---@return ShLuaStatement statement Repeat statement node.
 function Parser:parseRepeatStatement()
     self:expect("KEYWORD", "repeat")
     local body = self:parseBlock({ "until" })
@@ -337,6 +384,8 @@ function Parser:parseRepeatStatement()
     return { type = "RepeatStmt", body = body, condition = self:parseExpression() }
 end
 
+---Parses a scoped do/end block.
+---@return ShLuaStatement statement Do statement node.
 function Parser:parseDoStatement()
     self:expect("KEYWORD", "do")
     local body = self:parseBlock({ "end" })
@@ -344,6 +393,9 @@ function Parser:parseDoStatement()
     return { type = "DoStmt", body = body }
 end
 
+---Parses a named function declaration.
+---@param isLocal boolean Whether the declaration follows `local`.
+---@return ShLuaStatement statement Function declaration node.
 function Parser:parseFunctionDecl(isLocal)
     self:expect("KEYWORD", "function")
     local name = self:expect("IDENTIFIER").value
@@ -353,6 +405,8 @@ function Parser:parseFunctionDecl(isLocal)
     return { type = "FunctionDecl", name = name, params = params, body = body, isLocal = isLocal }
 end
 
+---Parses a numeric or generic for loop.
+---@return ShLuaStatement statement For statement node.
 function Parser:parseForStatement()
     self:expect("KEYWORD", "for")
     local firstName = self:expect("IDENTIFIER").value
@@ -388,6 +442,8 @@ function Parser:parseForStatement()
     return { type = "GenericForStmt", names = names, iterator = iterator, body = body }
 end
 
+---Parses one statement at the current token position.
+---@return ShLuaStatement statement Parsed statement node.
 function Parser:parseStatement()
     local token = self:peek()
     if token.type == "COMMENT" or (token.type == "OPERATOR" and token.value == ";") then
@@ -475,6 +531,9 @@ function Parser:parseStatement()
     error(string.format("Parse Error: unknown statement token %s '%s' at line %d", token.type, token.value, token.line))
 end
 
+---Parses statements until one of the provided keywords is encountered.
+---@param terminators string[] Keywords that end this block.
+---@return ShLuaStatement[] statements Statements in the block.
 function Parser:parseBlock(terminators)
     local statements = {}
     local terminatorMap = {}
@@ -495,6 +554,8 @@ function Parser:parseBlock(terminators)
     return statements
 end
 
+---Parses the complete token stream into a program AST.
+---@return ShLuaProgram program Root program node.
 function Parser:parse()
     return { type = "Program", body = self:parseBlock({}) }
 end

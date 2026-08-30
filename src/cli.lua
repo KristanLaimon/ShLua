@@ -3,10 +3,13 @@
 -- File: cli.lua
 -- ============================================================================
 
+---@class CLI
 local CLI = {}
 local NAME = "ShLua"
-local VERSION = "0.1.0-alpha"
+local VERSION = "0.9.0-beta"
 
+---Prints command-line usage and supported options.
+---@return nil
 function CLI.showHelp()
     print(string.format(
         [[
@@ -30,6 +33,9 @@ OPTIONS:
     ))
 end
 
+---Reads a complete source file.
+---@param filepath string Path to read.
+---@return string content File contents.
 function CLI.readFile(filepath)
     local file, err = io.open(filepath, "r")
     if not file then
@@ -40,6 +46,10 @@ function CLI.readFile(filepath)
     return content
 end
 
+---Writes generated output to a file.
+---@param filepath string Destination path.
+---@param content string Text to write.
+---@return nil
 function CLI.writeFile(filepath, content)
     local file, err = io.open(filepath, "w")
     if not file then
@@ -49,6 +59,11 @@ function CLI.writeFile(filepath, content)
     file:close()
 end
 
+---Parses ShLua command-line arguments into compiler options.
+---@param rawArgs string[] Arguments excluding the executable name.
+---@return ShLuaCliOptions options Parsed CLI options.
+---@example
+---local options = CLI.parse({ "-i", "main.lua", "-t", "bash" })
 function CLI.parse(rawArgs)
     local opts = {
         input = nil,

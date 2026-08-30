@@ -12,6 +12,7 @@
         },
         "workspace": {
             "library": [
+                "src/shlua.types.lua",
                 "tests/Lust.types.lua"
             ],
             "checkThirdParty": false

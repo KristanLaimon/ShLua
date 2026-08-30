@@ -2,6 +2,7 @@
 
 local Lexer = require("lexer")
 
+---@class LuaBundler
 local LuaBundler = {}
 
 local STANDARD_MODULES = {
@@ -13,6 +14,9 @@ local STANDARD_MODULES = {
     table = true,
 }
 
+---Reads a source file as binary-safe Lua text.
+---@param path string File to read.
+---@return string content File contents.
 local function readFile(path)
     local file, err = io.open(path, "rb")
     if not file then
@@ -23,10 +27,17 @@ local function readFile(path)
     return content
 end
 
+---Returns a path's containing directory, or the current directory.
+---@param path string Input path.
+---@return string directory Directory portion of the path.
 local function pathDirectory(path)
     return path:match("^(.*)[/\\]") or "."
 end
 
+---Joins a directory and relative filename using the host separator.
+---@param directory string Base directory.
+---@param filename string Relative filename.
+---@return string path Combined path.
 local function joinPath(directory, filename)
     local separator = package.config:sub(1, 1)
     if directory == "" or directory == "." then
@@ -35,6 +46,9 @@ local function joinPath(directory, filename)
     return directory .. separator .. filename
 end
 
+---Tests whether a readable file exists at a path.
+---@param path string Candidate path.
+---@return boolean exists Whether the file can be opened.
 local function fileExists(path)
     local file = io.open(path, "rb")
     if not file then
@@ -44,6 +58,10 @@ local function fileExists(path)
     return true
 end
 
+---Builds supported file candidates for a dotted local module name.
+---@param moduleName string Dotted Lua module name.
+---@param rootDirectory string Bundle root directory.
+---@return string[] paths Candidate module paths.
 local function moduleCandidates(moduleName, rootDirectory)
     if not moduleName:match("^[%a_][%w_%.]*$") then
         error("LuaBundler Error: unsupported module name '" .. moduleName .. "'")
@@ -55,6 +73,10 @@ local function moduleCandidates(moduleName, rootDirectory)
     }
 end
 
+---Finds the first readable file implementing a local module.
+---@param moduleName string Dotted Lua module name.
+---@param rootDirectory string Bundle root directory.
+---@return string path Resolved module path.
 local function resolveModule(moduleName, rootDirectory)
     for _, path in ipairs(moduleCandidates(moduleName, rootDirectory)) do
         if fileExists(path) then
@@ -64,6 +86,9 @@ local function resolveModule(moduleName, rootDirectory)
     error("LuaBundler Error: cannot resolve local module '" .. moduleName .. "' from '" .. rootDirectory .. "'")
 end
 
+---Builds byte offsets for each one-based source line.
+---@param source string Source text.
+---@return integer[] offsets One-based offsets indexed by line number.
 local function lineOffsets(source)
     local offsets = { 1 }
     local position = 1
@@ -78,14 +103,28 @@ local function lineOffsets(source)
     return offsets
 end
 
+---Converts a token line/column pair to a source byte offset.
+---@param offsets integer[] Offsets returned by `lineOffsets`.
+---@param token ShLuaToken Token with source coordinates.
+---@return integer offset One-based source offset.
 local function tokenOffset(offsets, token)
     return offsets[token.line] + token.column - 1
 end
 
+---Tests a token's category and text in one operation.
+---@param token ShLuaToken? Token to compare.
+---@param tokenType ShLuaTokenType Expected category.
+---@param value string Expected token text.
+---@return boolean matches Whether the token matches.
 local function isValue(token, tokenType, value)
     return token and token.type == tokenType and token.value == value
 end
 
+---Recognizes `require("module")` at a token position.
+---@param tokens ShLuaToken[] Token stream.
+---@param position integer One-based token position.
+---@return string? moduleName Required module name.
+---@return integer? closePosition Position of the closing parenthesis.
 local function requireAt(tokens, position)
     if not isValue(tokens[position], "IDENTIFIER", "require") then
         return nil
@@ -100,6 +139,9 @@ local function requireAt(tokens, position)
     return module.value, position + 3
 end
 
+---Finds supported standalone and local-declaration require calls.
+---@param source string Lua source text.
+---@return table[] declarations Replacement ranges and module names.
 local function requireDeclarations(source)
     local tokens = Lexer.new(source):tokenize()
     local offsets = lineOffsets(source)
@@ -137,6 +179,10 @@ local function requireDeclarations(source)
     return declarations
 end
 
+---Replaces discovered require declarations with explanatory comments.
+---@param source string Original Lua source.
+---@param declarations table[] Ranges returned by `requireDeclarations`.
+---@return string bundledSource Require-free source text.
 local function stripDeclarations(source, declarations)
     local chunks = {}
     local position = 1
@@ -149,6 +195,14 @@ local function stripDeclarations(source, declarations)
     return table.concat(chunks)
 end
 
+---Bundles local Lua dependencies into one require-free source string.
+---Standard-library imports are removed because generated scripts embed their supported helpers.
+---@param source string Root Lua source.
+---@param options? ShLuaBundleOptions Resolution options.
+---@return ShLuaBundle bundle Flattened source and dependency metadata.
+---@example
+---local bundle = LuaBundler.bundle(source, { rootPath = "scripts/main.lua" })
+---local code = ShLua.transpile(bundle.source, "bash")
 function LuaBundler.bundle(source, options)
     assert(type(source) == "string", "LuaBundler.bundle expects source text")
     options = options or {}
@@ -206,6 +260,9 @@ function LuaBundler.bundle(source, options)
     }
 end
 
+---Reads and bundles a Lua entry file.
+---@param path string Entry file path.
+---@return ShLuaBundle bundle Flattened source and dependency metadata.
 function LuaBundler.bundleFile(path)
     return LuaBundler.bundle(readFile(path), { rootPath = path })
 end

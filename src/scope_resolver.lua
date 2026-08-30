@@ -1,8 +1,16 @@
 -- Lexical binding resolver for the Lua subset supported by ShLua.
 
+---@class ScopeResolver
+---@field scopes table[] Active lexical scope maps.
+---@field bindingId integer Monotonic local-binding counter.
+---@field functionDepth integer Current nested function depth.
+---@field functionContexts table[] Active function capture contexts.
 local ScopeResolver = {}
 ScopeResolver.__index = ScopeResolver
 
+---Copies capture metadata so nested scopes cannot mutate a parent context.
+---@param captures table[] Captured bindings.
+---@return table[] copied Independent capture list.
 local function copyCaptures(captures)
     local result = {}
     for _, capture in ipairs(captures) do
@@ -15,6 +23,8 @@ local function copyCaptures(captures)
     return result
 end
 
+---Creates a resolver with the root lexical scope active.
+---@return ScopeResolver resolver New resolver.
 function ScopeResolver.new()
     return setmetatable({
         scopes = { {} },
@@ -24,18 +34,29 @@ function ScopeResolver.new()
     }, ScopeResolver)
 end
 
+---Returns the innermost active lexical scope.
+---@return table scope Current scope map.
 function ScopeResolver:currentScope()
     return self.scopes[#self.scopes]
 end
 
+---Pushes a new lexical scope.
+---@return nil
 function ScopeResolver:enterScope()
     table.insert(self.scopes, {})
 end
 
+---Pops the innermost lexical scope.
+---@return nil
 function ScopeResolver:leaveScope()
     table.remove(self.scopes)
 end
 
+---Declares a binding in the active or global scope.
+---@param name string Source identifier.
+---@param kind? string Binding kind.
+---@param isLocal boolean Whether the binding is local.
+---@return table binding Resolved binding metadata.
 function ScopeResolver:declare(name, kind, isLocal)
     local binding
     if isLocal then
@@ -70,6 +91,9 @@ function ScopeResolver:declare(name, kind, isLocal)
     return binding
 end
 
+---Resolves a name through nested scopes, creating an implicit global if needed.
+---@param name string Source identifier.
+---@return table binding Resolved binding metadata.
 function ScopeResolver:lookup(name)
     for index = #self.scopes, 1, -1 do
         local binding = self.scopes[index][name]
@@ -80,6 +104,9 @@ function ScopeResolver:lookup(name)
     return self:declare(name, "variable", false)
 end
 
+---Records a local outer binding captured by the current function.
+---@param binding table Binding metadata.
+---@return nil
 function ScopeResolver:recordCapture(binding)
     if not binding.isLocal or binding.functionDepth >= self.functionDepth then
         return
@@ -91,12 +118,18 @@ function ScopeResolver:recordCapture(binding)
     end
 end
 
+---Resolves a name and records a capture when appropriate.
+---@param name string Source identifier.
+---@return table binding Resolved binding metadata.
 function ScopeResolver:resolveName(name)
     local binding = self:lookup(name)
     self:recordCapture(binding)
     return binding
 end
 
+---Annotates an expression AST with binding and static-type information.
+---@param node? ShLuaExpression Expression node to resolve.
+---@return nil
 function ScopeResolver:resolveExpression(node)
     if not node then
         return
@@ -173,6 +206,9 @@ function ScopeResolver:resolveExpression(node)
     end
 end
 
+---Resolves parameters, body bindings, and captures for a function node.
+---@param node ShLuaExpression Function declaration or expression node.
+---@return nil
 function ScopeResolver:resolveFunction(node)
     self.functionDepth = self.functionDepth + 1
     local context = { captures = {}, captureMap = {} }
@@ -193,12 +229,18 @@ function ScopeResolver:resolveFunction(node)
     self.functionDepth = self.functionDepth - 1
 end
 
+---Resolves a statement list inside a temporary lexical scope.
+---@param statements ShLuaStatement[] Statements to resolve.
+---@return nil
 function ScopeResolver:resolveScopedBody(statements)
     self:enterScope()
     self:resolveStatements(statements, false)
     self:leaveScope()
 end
 
+---Resolves names and nested expressions for one statement node.
+---@param statement ShLuaStatement Statement to resolve.
+---@return nil
 function ScopeResolver:resolveStatement(statement)
     if statement.type == "RequireStmt" then
         return
@@ -300,12 +342,18 @@ function ScopeResolver:resolveStatement(statement)
     end
 end
 
+---Resolves every statement in source order.
+---@param statements ShLuaStatement[] Statements to resolve.
+---@return nil
 function ScopeResolver:resolveStatements(statements)
     for _, statement in ipairs(statements) do
         self:resolveStatement(statement)
     end
 end
 
+---Resolves a program once and returns the same annotated AST.
+---@param program ShLuaProgram Program to resolve.
+---@return ShLuaProgram program Resolved program.
 function ScopeResolver.resolve(program)
     assert(program and program.type == "Program", "ScopeResolver expects a Program AST")
     if program.scopeResolved then

@@ -170,10 +170,15 @@ local function collectMetadata(program)
     return closures, functionNames, capturedFunctionNames, runtime
 end
 
+---Creates a PowerShell transpiler instance.
+---@return table transpiler Configured PowerShell transpiler.
 function PS1Transpiler.new()
     return setmetatable({}, PS1Transpiler)
 end
 
+---Validates and collects alpha coroutine worker declarations.
+---@param program ShLuaProgram program Program to inspect.
+---@return table workers Workers keyed by source name.
 function PS1Transpiler:collectCoroutineWorkers(program)
     validateCoroutinePlacement(program.body, false)
     local workers = {}
@@ -221,6 +226,9 @@ function PS1Transpiler:collectCoroutineWorkers(program)
     return workers
 end
 
+---Converts a resolved Lua AST into PowerShell target metadata.
+---@param luaAST ShLuaProgram Program AST.
+---@return ShLuaTargetAst targetAST PowerShell target AST.
 function PS1Transpiler:translate(luaAST)
     assert(luaAST and luaAST.type == "Program", "PS1Transpiler expects a Program AST")
     ScopeResolver.resolve(luaAST)
@@ -249,6 +257,9 @@ end
 local Generator = {}
 Generator.__index = Generator
 
+---Creates a PowerShell serializer generator.
+---@param targetAST ShLuaTargetAst PowerShell target metadata.
+---@return table generator Generator instance.
 function Generator.new(targetAST)
     return setmetatable({
         workers = targetAST.coroutineWorkers,
@@ -262,6 +273,9 @@ function Generator.new(targetAST)
     }, Generator)
 end
 
+---Determines the runtime key type code for a table expression.
+---@param node ShLuaExpression Key expression.
+---@return string keyType Runtime key type code.
 function Generator:tableKeyType(node)
     local valueType = node.staticType or (node.type == "Literal" and (node.value == nil and "nil" or type(node.value)))
     if valueType == "nil" then
@@ -276,6 +290,9 @@ function Generator:tableKeyType(node)
     return ""
 end
 
+---Renders a Lua call expression as a PowerShell command.
+---@param node ShLuaExpression Call expression.
+---@return string command PowerShell command.
 function Generator:command(node)
     local helper = stdlibFunction(node.callee)
     if node.callee:find("%.") and not helper then
@@ -299,6 +316,9 @@ function Generator:command(node)
     return callee .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
 end
 
+---Renders a supported file-handle method call.
+---@param node ShLuaExpression Method-call expression.
+---@return string command PowerShell command.
 function Generator:methodCommand(node)
     if node.method == "write" then
         if #node.args ~= 1 then
@@ -314,6 +334,9 @@ function Generator:methodCommand(node)
     error("PS1Transpiler Error: unsupported method call '" .. node.method .. "'")
 end
 
+---Renders a Lua expression as a PowerShell value expression.
+---@param node ShLuaExpression Expression node.
+---@return string expression PowerShell expression.
 function Generator:expression(node)
     if node.type == "Literal" then
         if node.value == nil then
@@ -525,6 +548,10 @@ function Generator:coroutineResume(names, call, level)
     return table.concat(output, "\n")
 end
 
+---Renders one Lua statement at a target indentation level.
+---@param statement ShLuaStatement Statement node.
+---@param level integer Indentation level.
+---@return string source PowerShell source.
 function Generator:statement(statement, level)
     if statement.type == "RequireStmt" then
         return ""
@@ -802,6 +829,9 @@ function Generator:printRuntime()
 }]=]
 end
 
+---Serializes a target program to a complete PowerShell script.
+---@param program ShLuaProgram Program to generate.
+---@return string source PowerShell script source.
 function Generator:generate(program)
     local output = {}
     if self.runtime.print then
@@ -828,6 +858,9 @@ end
 
 local Serializer = {}
 
+---Serializes PowerShell target metadata through its generator.
+---@param targetAST ShLuaTargetAst PowerShell target AST.
+---@return string source PowerShell script source.
 function Serializer.serialize(targetAST)
     assert(targetAST and targetAST.type == "PS1Script", "PowerShell serializer expects a PS1Script AST")
     return Generator.new(targetAST):generate(targetAST.program)

@@ -1,5 +1,10 @@
 local M = {}
 
+---Extracts named helper definitions from a standard-library template.
+---@param source string Target runtime template.
+---@param target "bash"|"powershell" Target template syntax.
+---@return table<string, string> fragments Source fragment by helper name.
+---@return table[] ordered Helpers in source order.
 local function helperFragments(source, target)
     local pattern
     if target == "bash" then
@@ -23,6 +28,11 @@ local function helperFragments(source, target)
     return fragments, starts
 end
 
+---Renders only the standard-library helpers required by a target program.
+---@param library table Standard-library metadata and source template.
+---@param requirements table Required calls and helper names.
+---@param target "bash"|"powershell" Target runtime syntax.
+---@return string source Selected helper source.
 function M.render(library, requirements, target)
     local required = {}
     for call in pairs(requirements.calls or {}) do

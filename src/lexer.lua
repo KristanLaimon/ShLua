@@ -4,6 +4,13 @@
 -- Language: Lua (Output/Comments in English)
 -- ============================================================================
 
+---@class Lexer
+---@field input string Source currently being tokenized.
+---@field pos integer One-based cursor position.
+---@field length integer Source length in bytes.
+---@field line integer One-based current line.
+---@field column integer One-based current column.
+---@field TokenTypes table<string, ShLuaTokenType>
 local Lexer = {}
 Lexer.__index = Lexer
 
@@ -77,8 +84,9 @@ local SINGLE_OPS = {
     ".",
 }
 
---- Instantiates a new Lexer
--- @param input String containing the source code to tokenize
+---Creates a lexer positioned at the first character of Lua source.
+---@param input string Source text to tokenize.
+---@return Lexer lexer New lexer instance.
 function Lexer.new(input)
     local self = setmetatable({}, Lexer)
     self.input = input
@@ -89,7 +97,9 @@ function Lexer.new(input)
     return self
 end
 
--- Helper: Peek current character
+---Returns a character without advancing the input cursor.
+---@param offset? integer Zero-based offset from the current cursor.
+---@return string? character Character at the requested position, if present.
 function Lexer:peek(offset)
     offset = offset or 0
     local target = self.pos + offset
@@ -99,7 +109,8 @@ function Lexer:peek(offset)
     return self.input:sub(target, target)
 end
 
--- Helper: Advance character position
+---Advances the cursor while keeping line and column information accurate.
+---@param count? integer Number of characters to consume.
 function Lexer:advance(count)
     count = count or 1
     for i = 1, count do
@@ -113,7 +124,7 @@ function Lexer:advance(count)
     end
 end
 
--- Skip Whitespace
+---Consumes whitespace between tokens.
 function Lexer:skipWhitespace()
     while self.pos <= self.length do
         local ch = self:peek()
@@ -125,7 +136,8 @@ function Lexer:skipWhitespace()
     end
 end
 
--- Check matching bracket level for long strings and long comments (e.g., `[=...=[`)
+---Consumes a long-bracket opener and returns its equals-sign level.
+---@return integer? level Bracket level, or nil when the cursor is not a long opener.
 function Lexer:readLongBracketLevel()
     local level = 0
     self:advance() -- skip initial '['
@@ -140,7 +152,9 @@ function Lexer:readLongBracketLevel()
     return nil
 end
 
--- Lex Long String or Long Comment content given the opening bracket level
+---Reads the body of a long string or long comment.
+---@param level integer Equals-sign level from `readLongBracketLevel`.
+---@return string content Decoded long-bracket content.
 function Lexer:readLongString(level)
     local start_pos = self.pos
     while self.pos <= self.length do
@@ -163,7 +177,9 @@ function Lexer:readLongString(level)
     error(string.format("Lexer Error: Unclosed long string/comment near line %d", self.line))
 end
 
--- Read standard single or double-quoted string
+---Reads a quoted Lua string and decodes supported escape sequences.
+---@param quote string Opening quote character.
+---@return string value Decoded string content.
 function Lexer:readString(quote)
     self:advance() -- skip opening quote
     local value = {}
@@ -203,7 +219,8 @@ function Lexer:readString(quote)
     error(string.format("Lexer Error: Unclosed string literal near line %d", self.line))
 end
 
--- Read numeric literals (Integers, Floats, Hexadecimal, Scientific notation)
+---Reads one numeric literal without converting it to a Lua number.
+---@return string literal Source representation of the numeric literal.
 function Lexer:readNumber()
     local start_pos = self.pos
 
@@ -255,7 +272,8 @@ function Lexer:readNumber()
     return self.input:sub(start_pos, self.pos - 1)
 end
 
--- Read Identifiers or Keywords
+---Reads an identifier-shaped sequence of letters, digits, and underscores.
+---@return string identifier Identifier text.
 function Lexer:readIdentifier()
     local start_pos = self.pos
     while self.pos <= self.length do
@@ -269,8 +287,8 @@ function Lexer:readIdentifier()
     return self.input:sub(start_pos, self.pos - 1)
 end
 
---- Retrieves the next token from the input stream
--- @return table Token table containing type, value, line, and column
+---Returns the next token from the input stream.
+---@return ShLuaToken token Token with source location information.
 function Lexer:nextToken()
     self:skipWhitespace()
 
@@ -363,7 +381,8 @@ function Lexer:nextToken()
     error(string.format("Lexer Error: Unexpected character '%s' at line %d, column %d", ch, self.line, self.column))
 end
 
---- Utility function to tokenize an entire script string into a table
+---Tokenizes the full input and appends an EOF token.
+---@return ShLuaToken[] tokens Tokens in source order.
 function Lexer:tokenize()
     local tokens = {}
     while true do

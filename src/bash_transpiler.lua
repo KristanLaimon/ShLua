@@ -185,10 +185,15 @@ local function collectMetadata(program)
     return closures, functionNames, capturedFunctionNames, runtime
 end
 
+---Creates a Bash transpiler instance.
+---@return table transpiler Configured Bash transpiler.
 function BashTranspiler.new()
     return setmetatable({}, BashTranspiler)
 end
 
+---Validates and collects alpha coroutine worker declarations.
+---@param program ShLuaProgram program Program to inspect.
+---@return table workers Workers keyed by source name.
 function BashTranspiler:collectCoroutineWorkers(program)
     validateCoroutinePlacement(program.body, false)
     local workers = {}
@@ -236,6 +241,9 @@ function BashTranspiler:collectCoroutineWorkers(program)
     return workers
 end
 
+---Converts a resolved Lua AST into Bash target metadata.
+---@param luaAST ShLuaProgram Program AST.
+---@return ShLuaTargetAst targetAST Bash target AST.
 function BashTranspiler:translate(luaAST)
     assert(luaAST and luaAST.type == "Program", "BashTranspiler expects a Program AST")
     ScopeResolver.resolve(luaAST)
@@ -264,6 +272,9 @@ end
 local Generator = {}
 Generator.__index = Generator
 
+---Creates a Bash serializer generator.
+---@param targetAST ShLuaTargetAst Bash target metadata.
+---@return table generator Generator instance.
 function Generator.new(targetAST)
     return setmetatable({
         workers = targetAST.coroutineWorkers,
@@ -277,6 +288,10 @@ function Generator.new(targetAST)
     }, Generator)
 end
 
+---Renders a resolved identifier as a Bash value expression.
+---@param name string Resolved identifier.
+---@param kind? string Binding kind.
+---@return string expression Bash expression.
 function Generator:identifierValue(name, kind)
     if self.capturedFunctionNames[name] then
         return '"${' .. name .. '}"'
@@ -286,6 +301,9 @@ function Generator:identifierValue(name, kind)
     return '"${' .. name .. '}"'
 end
 
+---Determines the runtime key type code for a table expression.
+---@param node ShLuaExpression Key expression.
+---@return string keyType Runtime key type code.
 function Generator:tableKeyType(node)
     local valueType = node.staticType or (node.type == "Literal" and (node.value == nil and "nil" or type(node.value)))
     if valueType == "nil" then
@@ -300,6 +318,9 @@ function Generator:tableKeyType(node)
     return ""
 end
 
+---Renders an expression for Bash arithmetic contexts.
+---@param node ShLuaExpression Expression node.
+---@return string expression Bash arithmetic expression.
 function Generator:arithmetic(node)
     if node.type == "Literal" and type(node.value) == "number" then
         return tostring(node.value)
@@ -317,6 +338,9 @@ function Generator:arithmetic(node)
     return self:expression(node):gsub('^"', ""):gsub('"$', "")
 end
 
+---Renders an expression as a Bash conditional command.
+---@param node ShLuaExpression Expression node.
+---@return string condition Bash condition.
 function Generator:condition(node)
     if node.type == "Literal" and type(node.value) == "boolean" then
         return node.value and "true" or "false"
@@ -352,6 +376,9 @@ function Generator:condition(node)
     return "[ -n " .. self:expression(node) .. " ]"
 end
 
+---Renders a Lua call expression as a Bash command.
+---@param node ShLuaExpression Call expression.
+---@return string command Bash command.
 function Generator:command(node)
     local helper = stdlibFunction(node.callee)
     if node.callee:find("%.") and not helper then
@@ -387,6 +414,9 @@ function Generator:command(node)
     return callee .. suffix
 end
 
+---Renders a supported file-handle method call.
+---@param node ShLuaExpression Method-call expression.
+---@return string command Bash command.
 function Generator:methodCommand(node)
     if node.method == "write" then
         if #node.args ~= 1 then
@@ -402,6 +432,9 @@ function Generator:methodCommand(node)
     error("BashTranspiler Error: unsupported method call '" .. node.method .. "'")
 end
 
+---Renders a Lua expression as a Bash value expression.
+---@param node ShLuaExpression Expression node.
+---@return string expression Bash expression.
 function Generator:expression(node)
     if node.type == "Literal" then
         if node.value == nil then
@@ -505,6 +538,9 @@ function Generator:expression(node)
     error("BashTranspiler Error: unsupported expression " .. tostring(node.type))
 end
 
+---Renders a closure reference including captured values.
+---@param node ShLuaExpression Function expression node.
+---@return string value Serialized closure value.
 function Generator:closureValue(node)
     local value = '"__shlua_closure_' .. node.closureId
     for _, capture in ipairs(node.captures or {}) do
@@ -604,6 +640,11 @@ function Generator:coroutineResume(names, call, level, inFunction, isLocal)
     return table.concat(output, "\n")
 end
 
+---Renders one Lua statement at a target indentation level.
+---@param statement ShLuaStatement Statement node.
+---@param level integer Indentation level.
+---@param inFunction boolean Whether the statement is inside a function.
+---@return string source Bash source.
 function Generator:statement(statement, level, inFunction)
     if statement.type == "RequireStmt" then
         return ""
@@ -947,6 +988,9 @@ __shlua_coroutine_resume() {
 }]]
 end
 
+---Serializes a target program to a complete Bash script.
+---@param program ShLuaProgram Program to generate.
+---@return string source Bash script source.
 function Generator:generate(program)
     local output = { "#!/usr/bin/env bash", "" }
     if self.runtime.arithmetic then
@@ -977,6 +1021,9 @@ end
 
 local Serializer = {}
 
+---Serializes Bash target metadata through its generator.
+---@param targetAST ShLuaTargetAst Bash target AST.
+---@return string source Bash script source.
 function Serializer.serialize(targetAST)
     assert(targetAST and targetAST.type == "BashScript", "Bash serializer expects a BashScript AST")
     return Generator.new(targetAST):generate(targetAST.program)

@@ -14,6 +14,9 @@ local LIBRARIES = {
     table = true,
 }
 
+---Maps a known global or dotted call name to its runtime library.
+---@param name string Identifier or dotted callee name.
+---@return string? library Library name, if supported.
 local function libraryForName(name)
     if BASE_FUNCTIONS[name] then
         return "base"
@@ -28,6 +31,10 @@ local function libraryForName(name)
     return nil
 end
 
+---Gets or creates the mutable requirement record for a library.
+---@param required table<string, table> Accumulated requirements.
+---@param library string Library name.
+---@return table record Requirement record.
 local function requirement(required, library)
     if not required[library] then
         required[library] = { calls = {}, helpers = {} }
@@ -35,14 +42,27 @@ local function requirement(required, library)
     return required[library]
 end
 
+---Records a required standard-library call.
+---@param required table<string, table> Accumulated requirements.
+---@param library string Library name.
+---@param name string Fully qualified call name.
+---@return nil
 local function requireCall(required, library, name)
     requirement(required, library).calls[name] = true
 end
 
+---Records a required runtime helper that has no direct source call.
+---@param required table<string, table> Accumulated requirements.
+---@param library string Library name.
+---@param helper string Runtime helper name.
+---@return nil
 local function requireHelper(required, library, helper)
     requirement(required, library).helpers[helper] = true
 end
 
+---Finds the minimal standard-library runtime needed by a program AST.
+---@param program ShLuaProgram Program to inspect.
+---@return table<string, table> requirements Calls and helpers grouped by library.
 function M.analyze(program)
     assert(program and program.type == "Program", "Stdlib analyzer expects a Program AST")
     local required = {}
