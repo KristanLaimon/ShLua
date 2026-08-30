@@ -5,7 +5,7 @@
   <br>
   <span style="display:block;font-size:1.25rem;">Write shell scripts with the elegance and power of Lua.</span>
   <br>
-  <em>"You know Lua? You already know full bash/powershell then!" &mdash; Nobody</em>
+  <em>"You know Lua? You already know bash/powershell then!" &mdash; Nobody</em>
   <br><br>
   <a href="https://github.com/KristanLaimon/ShLua/releases/latest"><img src="https://img.shields.io/github/v/release/KristanLaimon/ShLua?color=blue&style=flat-square" alt="Latest Release"></a>
 <!--
@@ -20,7 +20,7 @@
 
 ---
 
-**ShLua** lets you write your script logic once in clean Lua and automatically transpile it to native, zero-dependency **Bash** and **PowerShell** scripts. No new syntax or DSL to learn, no forcing other script-interpreted runtimes onto your users—just fast, cross-platform scripts that run out-of-the-box in any terminal or CI pipeline.
+**ShLua** lets you write your script logic once in clean Lua and transpile it to native, zero-dependency **Bash** and **PowerShell** scripts. No new syntax or DSL to learn, no forcing other script-interpreted runtimes onto your users—just fast, cross-platform scripts that run out-of-the-box in any terminal or CI pipeline.
 
 ---
 
