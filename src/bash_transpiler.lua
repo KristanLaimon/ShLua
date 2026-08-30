@@ -2,6 +2,36 @@ local BashTranspiler = { name = "bash", extension = ".sh" }
 BashTranspiler.__index = BashTranspiler
 
 local ScopeResolver = require("scope_resolver")
+local StdlibAnalyzer = require("stdlib_analyzer")
+local BashBase = require("stdlib.bash.base")
+local BashIO = require("stdlib.bash.io")
+local BashMath = require("stdlib.bash.math")
+local BashOS = require("stdlib.bash.os")
+local BashString = require("stdlib.bash.string")
+local BashTable = require("stdlib.bash.table")
+
+local STDLIBS = { BashBase, BashMath, BashString, BashIO, BashOS, BashTable }
+
+local function stdlibFunction(name)
+    for _, library in ipairs(STDLIBS) do
+        if library.functions[name] then
+            return library.functions[name]
+        end
+        if library.unsupported and library.unsupported[name] then
+            error("BashTranspiler Error: unsupported library call '" .. name .. "': " .. library.unsupported[name])
+        end
+    end
+    return nil
+end
+
+local function stdlibConstant(name)
+    for _, library in ipairs(STDLIBS) do
+        if library.constants and library.constants[name] then
+            return library.constants[name]
+        end
+    end
+    return nil
+end
 
 local function isCall(node, name)
     return node and node.type == "CallExpr" and node.callee == name
@@ -176,6 +206,13 @@ function BashTranspiler:translate(luaAST)
     assert(luaAST and luaAST.type == "Program", "BashTranspiler expects a Program AST")
     ScopeResolver.resolve(luaAST)
     local closures, functionNames, capturedFunctionNames = collectMetadata(luaAST)
+    local requiredStdlibs = StdlibAnalyzer.analyze(luaAST)
+    local stdlibs = {}
+    for _, library in ipairs(STDLIBS) do
+        if requiredStdlibs[library.name] then
+            table.insert(stdlibs, library)
+        end
+    end
     return {
         type = "BashScript",
         program = luaAST,
@@ -183,6 +220,7 @@ function BashTranspiler:translate(luaAST)
         closures = closures,
         functionNames = functionNames,
         capturedFunctionNames = capturedFunctionNames,
+        stdlibs = stdlibs,
     }
 end
 
@@ -195,6 +233,7 @@ function Generator.new(targetAST)
         closures = targetAST.closures,
         functionNames = targetAST.functionNames,
         capturedFunctionNames = targetAST.capturedFunctionNames,
+        stdlibs = targetAST.stdlibs,
         loopId = 0,
         loopDepth = 0,
     }, Generator)
@@ -262,7 +301,8 @@ function Generator:condition(node)
 end
 
 function Generator:command(node)
-    if node.callee:find("%.") then
+    local helper = stdlibFunction(node.callee)
+    if node.callee:find("%.") and not helper then
         error("BashTranspiler Error: unsupported library call '" .. node.callee .. "'")
     end
     local arguments = {}
@@ -279,7 +319,7 @@ function Generator:command(node)
         end
         return "printf '" .. table.concat(formats, "\\t") .. "\\n' " .. table.concat(arguments, " ")
     end
-    local callee = node.resolvedCallee or node.callee
+    local callee = helper or node.resolvedCallee or node.callee
     local suffix = #arguments > 0 and " " .. table.concat(arguments, " ") or ""
     if self.capturedFunctionNames[callee] then
         return "__luash_call " .. self:identifierValue(callee, node.calleeKind) .. suffix
@@ -303,16 +343,26 @@ function Generator:expression(node)
         return shellQuote(node.value)
     elseif node.type == "Identifier" then
         if node.name:find("%.") then
-            error("BashTranspiler Error: dotted values are supported only as calls")
+            local constant = stdlibConstant(node.name)
+            if constant then
+                return constant
+            end
+            error("BashTranspiler Error: unsupported library value '" .. node.name .. "'")
         end
         return self:identifierValue(node.resolvedName or node.name, node.bindingKind)
     elseif node.type == "CallExpr" then
+        if node.callee == "tostring" and #node.args == 1 then
+            return self:expression(node.args[1])
+        end
         return '"$(' .. self:command(node) .. ')"'
     elseif node.type == "FunctionExpr" then
         return self:closureValue(node)
     elseif node.type == "UnaryExpr" then
         if node.operator == "-" then
-            return "$(( " .. self:arithmetic(node) .. " ))"
+            if node.operand.type == "Literal" and type(node.operand.value) == "number" then
+                return tostring(-node.operand.value)
+            end
+            return '"$(__luash_arithmetic 0 ' .. shellQuote("-") .. " " .. self:expression(node.operand) .. ')"'
         elseif node.operator == "#" and node.operand.type == "Identifier" then
             return '"${#' .. node.operand.name .. '}"'
         elseif node.operator == "not" then
@@ -321,6 +371,22 @@ function Generator:expression(node)
     elseif node.type == "BinaryExpr" then
         if node.operator == ".." then
             return self:expression(node.left) .. self:expression(node.right)
+        elseif node.operator == "or" then
+            return '"$(if '
+                .. self:condition(node.left)
+                .. "; then printf '%s' "
+                .. self:expression(node.left)
+                .. "; else printf '%s' "
+                .. self:expression(node.right)
+                .. '; fi)"'
+        elseif node.operator == "and" then
+            return '"$(if '
+                .. self:condition(node.left)
+                .. "; then printf '%s' "
+                .. self:expression(node.right)
+                .. "; else printf '%s' "
+                .. self:expression(node.left)
+                .. '; fi)"'
         elseif
             node.operator == "+"
             or node.operator == "-"
@@ -329,7 +395,13 @@ function Generator:expression(node)
             or node.operator == "%"
             or node.operator == "^"
         then
-            return "$(( " .. self:arithmetic(node) .. " ))"
+            return '"$(__luash_arithmetic '
+                .. self:expression(node.left)
+                .. " "
+                .. shellQuote(node.operator)
+                .. " "
+                .. self:expression(node.right)
+                .. ')"'
         end
         return "$(if " .. self:condition(node) .. "; then printf true; else printf false; fi)"
     end
@@ -634,7 +706,21 @@ function Generator:statement(statement, level, inFunction)
 end
 
 function Generator:runtime()
-    return [[__luash_closure_separator="$(printf '\034')"
+    return [[__luash_arithmetic() {
+    LC_ALL=C awk -v left="$1" -v operator="$2" -v right="$3" '
+        BEGIN {
+            if (operator == "+") result = left + right
+            else if (operator == "-") result = left - right
+            else if (operator == "*") result = left * right
+            else if (operator == "/") result = left / right
+            else if (operator == "%") result = left % right
+            else if (operator == "^") result = left ^ right
+            printf "%.15g\n", result
+        }
+    ' </dev/null
+}
+
+__luash_closure_separator="$(printf '\034')"
 __luash_call() {
     local __luash_callable="$1"
     shift
@@ -671,6 +757,10 @@ end
 
 function Generator:generate(program)
     local output = { "#!/usr/bin/env bash", "", self:runtime(), "" }
+    for _, library in ipairs(self.stdlibs) do
+        table.insert(output, library.source)
+        table.insert(output, "")
+    end
     for _, closure in ipairs(self.closures) do
         table.insert(output, self:closure(closure, 0))
         table.insert(output, "")

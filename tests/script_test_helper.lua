@@ -16,10 +16,14 @@ local function writeFile(path, content)
 end
 
 local function run(command)
-    local pipe = assert(io.popen(command .. " 2>&1"))
+    local fullCommand = command .. " 2>&1"
+    if package.config:sub(1, 1) == "\\" and command:sub(1, 1) == '"' then
+        fullCommand = '"' .. fullCommand .. '"'
+    end
+    local pipe = assert(io.popen(fullCommand))
     local output = pipe:read("*a"):gsub("\r\n", "\n")
     local ok, _, code = pipe:close()
-    return ok and (not code or code == 0), output
+    return ok == true and (not code or code == 0), output
 end
 
 local function commandAvailable(command)
@@ -28,19 +32,73 @@ local function commandAvailable(command)
     return ok == true or ok == 0
 end
 
+local function commandOnPath(command)
+    local windows = package.config:sub(1, 1) == "\\"
+    local probe = windows and ("where " .. command .. " >NUL 2>NUL") or ("command -v " .. command .. " >/dev/null 2>&1")
+    local ok = os.execute(probe)
+    return ok == true or ok == 0
+end
+
+local function fileExists(path)
+    local file = io.open(path, "rb")
+    if not file then
+        return false
+    end
+    file:close()
+    return true
+end
+
+local function findBash()
+    if commandAvailable("bash") then
+        return "bash"
+    end
+    if package.config:sub(1, 1) ~= "\\" then
+        return nil
+    end
+
+    local pipe = io.popen("where git 2>NUL")
+    if not pipe then
+        return nil
+    end
+    local gitPath = pipe:read("*l")
+    pipe:close()
+    local gitRoot = gitPath and gitPath:match("^(.*)[/\\]cmd[/\\]git%.exe$")
+    local bashPath = gitRoot and (gitRoot .. "\\bin\\bash.exe")
+    if bashPath and fileExists(bashPath) then
+        return bashPath
+    end
+    return nil
+end
+
 local function execute(path, target)
     if target == "bash" then
-        if not commandAvailable("bash") then
+        local bash = findBash()
+        if not bash then
             return nil, nil
         end
-        return run("bash " .. quote(path))
+        return run(quote(bash) .. " " .. quote(path))
     end
-    if commandAvailable("pwsh") then
+    if commandOnPath("pwsh") then
         return run("pwsh -NoProfile -File " .. quote(path))
-    elseif commandAvailable("powershell") then
+    elseif commandOnPath("powershell") then
         return run("powershell -NoProfile -ExecutionPolicy Bypass -File " .. quote(path))
     end
     return nil, nil
+end
+
+function M.compileAndRunTarget(name, source, target)
+    local code = Luash.transpile(source, target)
+    local extension = target == "bash" and ".sh" or ".ps1"
+    local path = "tests/scripts/" .. name .. extension
+    writeFile(path, code)
+    local ok, output = execute(path, target)
+    return {
+        code = code,
+        executed = ok ~= nil,
+        ok = ok,
+        output = output,
+        path = path,
+    }
 end
 
 function M.compileAndRun(name, source)

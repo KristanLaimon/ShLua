@@ -9,11 +9,11 @@ local function quote(path)
     return '"' .. path:gsub('"', '""') .. '"'
 end
 
-local function writeTemporary(content)
+local function writeTemporary(content, target)
     local generatedName = os.tmpname():match("[^/\\]+$") or "luash-integration"
-    generatedName = generatedName:gsub("%.*$", "") .. ".tmp"
-    local tempRoot = os.getenv("TEMP") or os.getenv("TMPDIR") or "."
-    local path = tempRoot .. package.config:sub(1, 1) .. generatedName
+    local extension = target == "bash" and ".sh" or ".ps1"
+    generatedName = generatedName:gsub("%.*$", "") .. extension
+    local path = "tests/" .. generatedName
     local file = assert(io.open(path, "wb"))
     file:write(content)
     file:close()
@@ -21,10 +21,14 @@ local function writeTemporary(content)
 end
 
 local function run(command)
-    local pipe = assert(io.popen(command .. " 2>&1"))
+    local fullCommand = command .. " 2>&1"
+    if package.config:sub(1, 1) == "\\" and command:sub(1, 1) == '"' then
+        fullCommand = '"' .. fullCommand .. '"'
+    end
+    local pipe = assert(io.popen(fullCommand))
     local output = pipe:read("*a"):gsub("\r\n", "\n")
     local ok, _, code = pipe:close()
-    return ok and (not code or code == 0), output
+    return ok == true and (not code or code == 0), output
 end
 
 local function commandAvailable(command)
@@ -33,12 +37,47 @@ local function commandAvailable(command)
     return ok == true or ok == 0
 end
 
+local function commandOnPath(command)
+    local windows = package.config:sub(1, 1) == "\\"
+    local probe = windows and ("where " .. command .. " >NUL 2>NUL") or ("command -v " .. command .. " >/dev/null 2>&1")
+    local ok = os.execute(probe)
+    return ok == true or ok == 0
+end
+
+local function fileExists(path)
+    local file = io.open(path, "rb")
+    if not file then
+        return false
+    end
+    file:close()
+    return true
+end
+
+local function findBash()
+    if commandAvailable("bash") then
+        return "bash"
+    end
+    if package.config:sub(1, 1) ~= "\\" then
+        return nil
+    end
+    local pipe = io.popen("where git 2>NUL")
+    if not pipe then
+        return nil
+    end
+    local gitPath = pipe:read("*l")
+    pipe:close()
+    local gitRoot = gitPath and gitPath:match("^(.*)[/\\]cmd[/\\]git%.exe$")
+    local bashPath = gitRoot and (gitRoot .. "\\bin\\bash.exe")
+    return bashPath and fileExists(bashPath) and bashPath or nil
+end
+
 local function executeTarget(source, target)
-    local path = writeTemporary(Luash.transpile(source, target))
+    local path = writeTemporary(Luash.transpile(source, target), target)
     local command
     if target == "bash" then
-        command = "bash " .. quote(path)
-    elseif commandAvailable("pwsh") then
+        local bash = assert(findBash(), "Bash is required for Bash integration tests")
+        command = quote(bash) .. " " .. quote(path)
+    elseif commandOnPath("pwsh") then
         command = "pwsh -NoProfile -File " .. quote(path)
     else
         command = "powershell -NoProfile -ExecutionPolicy Bypass -File " .. quote(path)
@@ -141,7 +180,7 @@ describe("Generated Script Integration", function()
     end)
 
     it("executes complex PowerShell output when PowerShell is installed", function()
-        if not commandAvailable("powershell") and not commandAvailable("pwsh") then
+        if not commandOnPath("powershell") and not commandOnPath("pwsh") then
             return
         end
         local ok, output = executeTarget(BASIC_SOURCE, "ps1")
@@ -152,7 +191,7 @@ describe("Generated Script Integration", function()
     end)
 
     it("executes PowerShell coroutine transitions when PowerShell is installed", function()
-        if not commandAvailable("powershell") and not commandAvailable("pwsh") then
+        if not commandOnPath("powershell") and not commandOnPath("pwsh") then
             return
         end
         local ok, output = executeTarget(COROUTINE_SOURCE, "ps1")
@@ -171,7 +210,7 @@ describe("Generated Script Integration", function()
     end)
 
     it("executes Phase 1-3 PowerShell output when PowerShell is installed", function()
-        if not commandAvailable("powershell") and not commandAvailable("pwsh") then
+        if not commandOnPath("powershell") and not commandOnPath("pwsh") then
             return
         end
         local ok, output = executeTarget(PHASE_THREE_SOURCE, "ps1")

@@ -15,7 +15,7 @@ describe("Single-file Distribution", function()
     it("loads without source modules on package.path", function()
         expect(Luash.VERSION).toBe("0.1.0-alpha")
         local code = Luash.transpile("local answer = 6 * 7", "bash")
-        expect(code:find("answer=$(( (6 * 7) ))", 1, true) ~= nil).toBeTruthy()
+        expect(code:find("answer=\"$(__luash_arithmetic 6 '*' 7)\"", 1, true) ~= nil).toBeTruthy()
     end)
 
     it("returns both targets from the reusable API", function()

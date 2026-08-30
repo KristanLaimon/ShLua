@@ -33,6 +33,9 @@ Lua subset AST
     v
 Lexical scope resolver (src/scope_resolver.lua)
     |
+    v
+Standard-library analyzer (src/stdlib_analyzer.lua)
+    |
     +--------------------------+
     |                          |
     v                          v
@@ -62,9 +65,12 @@ only a location-independent launcher that adds `src/` to `package.path` and dele
 | `src/lexer.lua` | Converts source text into tokens with source locations. |
 | `src/parser.lua` | Produces the supported Lua AST using recursive descent and precedence climbing. |
 | `src/scope_resolver.lua` | Resolves lexical bindings, block-local generated names, captures, and recursive names. |
+| `src/stdlib_analyzer.lua` | Finds referenced base, math, string, IO, OS, and table libraries throughout the AST. |
 | `src/ITranspiler.lua` | Validates the structural target-backend contract. |
 | `src/bash_transpiler.lua` | Validates Bash constraints and serializes executable Bash 3.2+ source. |
 | `src/ps1_transpiler.lua` | Validates PowerShell constraints and serializes PowerShell 3.0+ source. |
+| `src/stdlib/bash/*.lua` | Maps supported Lua library calls to self-contained Bash helpers. |
+| `src/stdlib/powershell/*.lua` | Maps supported Lua library calls to self-contained PowerShell/.NET helpers. |
 | `run_build.lua` | Syntax-checks source modules and generates the single-file distribution. |
 | `run_tests.lua` | Runs every maintained test file in an isolated Lua process. |
 | `run_check.lua` | Runs build, syntax, format, lint, and distribution smoke checks. |
@@ -91,10 +97,21 @@ Every registered backend must provide:
 - `Serializer.serialize(targetAST)` returning executable source text.
 
 The current wrappers are `BashScript` and `PS1Script`. They retain the resolved program, closure/function metadata,
-and the validated coroutine worker set. Target-specific generator objects own quoting, expression mapping, statement
-rendering, runtime helpers, and final serialization. Backend validation happens before output is emitted.
+the validated coroutine worker set, and the ordered standard-library modules required by the program. Target-specific
+generator objects own quoting, expression mapping, statement rendering, runtime helpers, and final serialization.
+Backend validation happens before output is emitted.
 
-## 6. Lua AST contract
+## 6. Standard-library injection
+
+The shared analyzer walks all expressions and statements, including nested function bodies, and records library calls
+and dotted constants. Each backend filters its strategy modules against that result. Serializers embed only the selected
+helper source before user declarations, so generated scripts never load compiler files or shell modules at runtime.
+
+Library modules expose a small data contract: `name`, supported `functions`, optional `constants`, explicit
+`unsupported` reasons, and embeddable `source`. Unsupported multi-return, iterator, file-handle, and table-mutation APIs
+fail during transpilation rather than being emitted with different semantics.
+
+## 7. Lua AST contract
 
 The parser currently produces:
 
@@ -111,7 +128,7 @@ The scope resolver annotates declarations, identifiers, and call targets with re
 outer lexical bindings read by function expressions and captured named functions. This shared pass keeps both targets
 on the same binding model even though their native shell scope rules differ.
 
-## 7. Coroutine lowering
+## 8. Coroutine lowering
 
 Alpha coroutines are compiled generators rather than suspended Lua stacks:
 
@@ -125,13 +142,13 @@ Bash stores handle state in generated variables and dispatches through `__luash_
 a hashtable handle and generated worker functions. Names beginning with `__luash_` are reserved for generated runtime
 internals.
 
-## 8. Single-file distribution
+## 9. Single-file distribution
 
 `run_build.lua` wraps every compiler module in `package.preload`, embeds them in `dist/luash.lua`, and appends a small
 dispatcher. Loading that file through `require("luash")` returns the API; executing it runs the CLI. The generated file
 uses only the Lua standard library and must not read modules from the repository at runtime.
 
-## 9. Verification architecture
+## 10. Verification architecture
 
 Compiler tests remain directly under `tests/`. Numbered dependency-free Lua script cases live under `tests/scripts/`
 as `NN_<testName>.test.lua`, progressing from minimal programs to combined complex programs. Each script case writes

@@ -2,6 +2,36 @@ local PS1Transpiler = { name = "ps1", extension = ".ps1" }
 PS1Transpiler.__index = PS1Transpiler
 
 local ScopeResolver = require("scope_resolver")
+local StdlibAnalyzer = require("stdlib_analyzer")
+local PS1Base = require("stdlib.powershell.base")
+local PS1IO = require("stdlib.powershell.io")
+local PS1Math = require("stdlib.powershell.math")
+local PS1OS = require("stdlib.powershell.os")
+local PS1String = require("stdlib.powershell.string")
+local PS1Table = require("stdlib.powershell.table")
+
+local STDLIBS = { PS1Base, PS1Math, PS1String, PS1IO, PS1OS, PS1Table }
+
+local function stdlibFunction(name)
+    for _, library in ipairs(STDLIBS) do
+        if library.functions[name] then
+            return library.functions[name]
+        end
+        if library.unsupported and library.unsupported[name] then
+            error("PS1Transpiler Error: unsupported library call '" .. name .. "': " .. library.unsupported[name])
+        end
+    end
+    return nil
+end
+
+local function stdlibConstant(name)
+    for _, library in ipairs(STDLIBS) do
+        if library.constants and library.constants[name] then
+            return library.constants[name]
+        end
+    end
+    return nil
+end
 
 local function isCall(node, name)
     return node and node.type == "CallExpr" and node.callee == name
@@ -173,6 +203,13 @@ function PS1Transpiler:translate(luaAST)
     assert(luaAST and luaAST.type == "Program", "PS1Transpiler expects a Program AST")
     ScopeResolver.resolve(luaAST)
     local closures, functionNames, capturedFunctionNames = collectMetadata(luaAST)
+    local requiredStdlibs = StdlibAnalyzer.analyze(luaAST)
+    local stdlibs = {}
+    for _, library in ipairs(STDLIBS) do
+        if requiredStdlibs[library.name] then
+            table.insert(stdlibs, library)
+        end
+    end
     return {
         type = "PS1Script",
         program = luaAST,
@@ -180,6 +217,7 @@ function PS1Transpiler:translate(luaAST)
         closures = closures,
         functionNames = functionNames,
         capturedFunctionNames = capturedFunctionNames,
+        stdlibs = stdlibs,
     }
 end
 
@@ -192,13 +230,15 @@ function Generator.new(targetAST)
         closures = targetAST.closures,
         functionNames = targetAST.functionNames,
         capturedFunctionNames = targetAST.capturedFunctionNames,
+        stdlibs = targetAST.stdlibs,
         loopId = 0,
         loopDepth = 0,
     }, Generator)
 end
 
 function Generator:command(node)
-    if node.callee:find("%.") then
+    local helper = stdlibFunction(node.callee)
+    if node.callee:find("%.") and not helper then
         error("PS1Transpiler Error: unsupported library call '" .. node.callee .. "'")
     end
     local arguments = {}
@@ -208,7 +248,7 @@ function Generator:command(node)
     if node.callee == "print" then
         return "Write-Output" .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
     end
-    local callee = node.resolvedCallee or node.callee
+    local callee = helper or node.resolvedCallee or node.callee
     if self.capturedFunctionNames[callee] then
         return "__luash_call $" .. callee .. " @(" .. table.concat(arguments, ", ") .. ")"
     elseif node.calleeKind == "function" or self.functionNames[callee] then
@@ -231,7 +271,11 @@ function Generator:expression(node)
         return psQuote(node.value)
     elseif node.type == "Identifier" then
         if node.name:find("%.") then
-            error("PS1Transpiler Error: dotted values are supported only as calls")
+            local constant = stdlibConstant(node.name)
+            if constant then
+                return constant
+            end
+            error("PS1Transpiler Error: unsupported library value '" .. node.name .. "'")
         end
         local name = node.resolvedName or node.name
         if self.capturedFunctionNames[name] then
@@ -241,6 +285,9 @@ function Generator:expression(node)
         end
         return "$" .. name
     elseif node.type == "CallExpr" then
+        if node.callee == "tostring" and #node.args == 1 then
+            return "([string] " .. self:expression(node.args[1]) .. ")"
+        end
         return "$(" .. self:command(node) .. ")"
     elseif node.type == "FunctionExpr" then
         return self:closureValue(node)
@@ -255,6 +302,24 @@ function Generator:expression(node)
     elseif node.type == "BinaryExpr" then
         if node.operator == "^" then
             return "[Math]::Pow(" .. self:expression(node.left) .. ", " .. self:expression(node.right) .. ")"
+        elseif node.operator == ".." then
+            return "([string] " .. self:expression(node.left) .. " + [string] " .. self:expression(node.right) .. ")"
+        elseif node.operator == "or" then
+            return "$(if ("
+                .. self:expression(node.left)
+                .. ") { "
+                .. self:expression(node.left)
+                .. " } else { "
+                .. self:expression(node.right)
+                .. " })"
+        elseif node.operator == "and" then
+            return "$(if ("
+                .. self:expression(node.left)
+                .. ") { "
+                .. self:expression(node.right)
+                .. " } else { "
+                .. self:expression(node.left)
+                .. " })"
         end
         local operators = {
             ["=="] = "-eq",
@@ -268,9 +333,6 @@ function Generator:expression(node)
             ["*"] = "*",
             ["/"] = "/",
             ["%"] = "%",
-            [".."] = "+",
-            ["and"] = "-and",
-            ["or"] = "-or",
         }
         local operator = operators[node.operator]
         if operator then
@@ -607,6 +669,10 @@ function Generator:generate(program)
 }]=],
         "",
     }
+    for _, library in ipairs(self.stdlibs) do
+        table.insert(output, library.source)
+        table.insert(output, "")
+    end
     for _, closure in ipairs(self.closures) do
         table.insert(output, self:closure(closure, 0))
         table.insert(output, "")

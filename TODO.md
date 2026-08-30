@@ -18,17 +18,32 @@
 - [x] Update compatibility and architecture documentation for the Phase 0–3 subset and known limits.
 - [x] Run `lua run_build.lua`, `lua run_tests.lua`, and `lua run_check.lua` successfully.
 
-## Later phases
+## Completed work: Phases 4, 5, 7, and the Phase 8 fixture
 
-- [ ] Phase 4: Bash math and string standard-library support.
-- [ ] Phase 5: PowerShell math and string standard-library support.
-- [ ] Phase 6: OS, IO, and table libraries for both targets.
-- [ ] Phase 7: standard-library dependency analysis and injection.
-- [ ] Phase 8: bundling and full `hard_test.lua` end-to-end validation.
+- [x] Phase 4: add Bash math/string strategy modules and scalar helpers.
+- [x] Phase 4: execute generated Bash math/string cases under Git-for-Windows Bash.
+- [x] Phase 5: add PowerShell math/string strategy modules using PowerShell/.NET primitives.
+- [x] Phase 5: execute generated PowerShell math/string cases under Windows PowerShell.
+- [x] Phase 6: add Bash and PowerShell base, IO, OS, and table module contracts.
+- [x] Phase 6: implement scalar base conversions, stream IO, and portable OS helpers used by the supported subset.
+- [x] Phase 7: analyze nested AST calls/constants and inject only referenced target-library modules.
+- [x] Phase 8: embed selected helper source into single generated scripts and the standalone `dist/luash.lua` compiler.
+- [x] Phase 8: transpile and execute the original `hard_test.lua` on both installed target shells.
+- [x] Fix value-returning `and`/`or`, PowerShell string concatenation, and Bash decimal arithmetic exposed by the fixture.
+- [x] Make Windows tests find Git Bash outside `PATH` and distinguish launch failures from missing interpreters.
 
-## Next session: Phase 4
+## Remaining Phase 6 work
 
-- Read `TODO.md`, `PROGRESS.md`, and the Phase 4 library-related Lua 5.1 manual sections.
-- Define the dependency-free Bash standard-library module contract under `src/stdlib/bash/`.
-- Implement and execute focused Bash math/string cases before expanding `hard_test.lua` coverage.
-- Add dependency-free script cases as `tests/scripts/NN_<testName>.test.lua`, ordered from simplest to most complex.
+- [ ] Parse sequence/keyed table constructors, indexing, and field access with Lua 5.1 semantics.
+- [ ] Define a cross-target table value representation that preserves numeric and string keys.
+- [ ] Implement `table.concat`, `table.insert`, `table.maxn`, `table.remove`, and `table.sort` for both targets.
+- [ ] Extend generic `pairs`/`ipairs` lowering to the shared table representation.
+- [ ] Decide the next alpha boundary for file handles, Lua string patterns/iterators, and multi-return library APIs;
+      current calls reject clearly.
+
+## Next session: Phase 6 tables
+
+- Read the Lua 5.1 table-constructor/indexing and table-library manual sections.
+- Add parser/resolver fixtures for sequence and keyed table values before selecting the shell encoding.
+- Preserve one-time evaluation, mutable identity, 1-based indices, and `nil` deletion semantics in the design.
+- Execute generated mutation/iteration cases on both installed shells, then rerun all three release gates.

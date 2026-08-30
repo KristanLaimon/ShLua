@@ -41,15 +41,25 @@ numeric behavior still follows the destination shell, as described below.
 - Generic `for` over `pairs(identifier)` or `ipairs(identifier)`; target-native collection construction is deferred to
   the table-library phases.
 - `print(...)`, mapped to target-native output.
+- Scalar base calls: `tonumber`, `tostring`, and `type` (subject to target value-model differences).
+- Scalar math calls: `abs`, `acos`, `asin`, `atan`, `atan2`, `ceil`, `cos`, `cosh`, `deg`, `exp`, `floor`, `fmod`,
+  `ldexp`, `log`, `log10`, `max`, `min`, `pow`, `rad`, `sin`, `sinh`, `sqrt`, `tan`, and `tanh`; constants `math.pi`
+  and `math.huge`.
+- String calls: `byte` (one result), `char`, literal `find` (start index only), `format`, `len`, `lower`, `rep`,
+  `reverse`, `sub`, and `upper`.
+- Stream calls: `io.write`, `io.flush`, and scalar line-oriented `io.read`.
+- OS calls: `clock`, scalar `date`, `difftime`, `execute`, `exit`, `getenv`, `remove`, `rename`, `time`, and `tmpname`.
+- Required target helpers are selected by AST analysis and embedded in the generated script.
 - Short and long comments are ignored by the parser.
 
 ### Not supported in alpha
 
-- Tables, indexing, field access, methods, metatables, and object-style calls.
+- Table constructors, indexing, field access, methods, metatables, object-style calls, and the mutable `table` library.
 - Assignment to captured closure variables, recursive local closures with captures, varargs, and general multiple
   returns.
 - Multiple expressions on the right side of declarations or assignments.
-- Modules such as `require`, `io`, `os`, and arbitrary Lua standard-library calls in transpiled input.
+- Runtime Lua loading/modules and arbitrary standard-library calls outside the explicitly supported list.
+- Multi-return `math.frexp`/`math.modf`, seeded `math.random`, Lua pattern matching, string iterators, and file handles.
 - Full Lua error handling or exact Lua runtime coercion rules.
 
 The lexer recognizes more Lua tokens than the parser accepts. Tokenization does not imply that a construct is part of
@@ -86,11 +96,13 @@ control flow or local declarations in workers, `wrap`, `status`, arbitrary sched
   `__luash_call` helper.
 - `print` uses `printf`; multiple arguments are tab-separated.
 - Function return values are written to stdout and captured with command substitution.
-- Arithmetic uses Bash arithmetic expansion. It is integer-oriented; division truncates and decimal behavior is not
-  Lua-compatible. Lua `^` maps to Bash `**`.
+- Source arithmetic expressions use an injected `awk` helper so decimal operands and division are preserved. Numeric
+  loop counters remain Bash integer arithmetic. Lua `^` maps to awk exponentiation.
 - Equality uses string comparison; ordered comparisons use integer test operators.
 - `nil` lowers to an empty string.
 - Strings are single-quoted safely, while concatenation joins quoted fragments and variable expansions.
+- Math helpers use the standard `awk` utility. OS helpers may use `date`, `rm`, `mv`, or `mktemp` only when the
+  corresponding source call is present.
 
 Known semantic differences:
 
@@ -101,6 +113,9 @@ Known semantic differences:
 - Generated condition checks approximate truthiness. In particular, empty strings are false-like in generated Bash,
   while Lua treats an empty string as true.
 - Exit statuses and stdout are separate in Bash, so Luash uses stdout for ordinary function values.
+- `os.clock` measures elapsed whole seconds through Bash `SECONDS`, rather than process CPU time.
+- `string.find` is literal-only and exposes only the first return value; byte functions follow the target locale and
+  cannot preserve embedded NUL bytes.
 
 ## 5. PowerShell target
 
@@ -113,12 +128,16 @@ Known semantic differences:
 - String length maps to `.Length`.
 - Coroutine handles use generated hashtables and dynamically dispatched worker functions.
 - Anonymous closures use generated hashtables containing their function name and capture environment.
+- Standard-library helpers use built-in PowerShell commands and .NET classes and are injected only when referenced.
 
 Known semantic differences:
 
 - PowerShell pipeline enumeration can differ from Lua's single-value return behavior.
 - PowerShell conversion and truthiness rules apply after transpilation and are not exact Lua coercion rules.
 - Multiple `Write-Output` arguments are pipeline output objects rather than a byte-for-byte Lua `print` emulation.
+- `os.clock` measures elapsed wall time with `System.Diagnostics.Stopwatch`, rather than process CPU time.
+- `string.find` is literal-only and exposes only its first result. `string.format` supports the documented scalar
+  conversions but does not reproduce every C `printf` flag.
 
 ## 6. Reserved generated names
 

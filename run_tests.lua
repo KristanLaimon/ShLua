@@ -34,6 +34,9 @@ local scriptTestFiles = {
     "tests/scripts/05_closures.test.lua",
     "tests/scripts/06_coroutines.test.lua",
     "tests/scripts/07_complex.test.lua",
+    "tests/scripts/08_bash_stdlib.test.lua",
+    "tests/scripts/09_powershell_stdlib.test.lua",
+    "tests/scripts/10_hard_test.test.lua",
 }
 
 local testFiles = {
@@ -43,6 +46,7 @@ local testFiles = {
     "tests/ps1_transpiler.test.lua",
     "tests/coroutine.test.lua",
     "tests/integration.test.lua",
+    "tests/stdlib_analyzer.test.lua",
     "tests/dist.test.lua",
 }
 

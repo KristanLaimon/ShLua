@@ -21,7 +21,7 @@ describe("Bash Transpiler", function()
         local code = transpile([[local greeting = "it's $HOME"
 local result = 1 + 2 * 3]])
         expect(contains(code, "greeting='it'\\''s $HOME'")).toBeTruthy()
-        expect(contains(code, "result=$(( (1 + (2 * 3)) ))")).toBeTruthy()
+        expect(contains(code, "result=\"$(__luash_arithmetic 1 '+' \"$(__luash_arithmetic 2 '*' 3)\")\"")).toBeTruthy()
     end)
 
     it("emits functions, command substitution, and returns", function()
