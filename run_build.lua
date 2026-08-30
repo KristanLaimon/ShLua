@@ -3,6 +3,7 @@
 local MODULES = {
     { name = "cli", path = "src/cli.lua" },
     { name = "lexer", path = "src/lexer.lua" },
+    { name = "luabundler", path = "src/luabundler.lua" },
     { name = "parser", path = "src/parser.lua" },
     { name = "scope_resolver", path = "src/scope_resolver.lua" },
     { name = "stdlib_analyzer", path = "src/stdlib_analyzer.lua" },
@@ -32,6 +33,7 @@ local SOURCE_FILES = {
     "run_tests.lua",
     "src/cli.lua",
     "src/lexer.lua",
+    "src/luabundler.lua",
     "src/parser.lua",
     "src/scope_resolver.lua",
     "src/stdlib_analyzer.lua",

@@ -1,5 +1,6 @@
 local CLI = require("cli")
 local Lexer = require("lexer")
+local LuaBundler = require("luabundler")
 local Parser = require("parser")
 local TranspilerInterface = require("ITranspiler")
 
@@ -35,17 +36,22 @@ local function dumpValue(value, level)
     end
 end
 
-function ShLua.parse(source)
-    assert(type(source) == "string", "ShLua.parse expects source text")
-    return Parser.new(Lexer.new(source):tokenize()):parse()
+function ShLua.bundle(source, options)
+    return LuaBundler.bundle(source, options)
 end
 
-function ShLua.transpile(source, target)
+function ShLua.parse(source, options)
+    assert(type(source) == "string", "ShLua.parse expects source text")
+    local bundled = ShLua.bundle(source, options)
+    return Parser.new(Lexer.new(bundled.source):tokenize()):parse()
+end
+
+function ShLua.transpile(source, target, options)
     target = target or "all"
     if target ~= "all" and not TARGETS[target] then
         error("ShLua Error: target must be 'bash', 'ps1', or 'all'")
     end
-    local ast = ShLua.parse(source)
+    local ast = ShLua.parse(source, options)
     if target == "all" then
         local results = {}
         for _, name in ipairs(TARGET_ORDER) do
@@ -56,6 +62,11 @@ function ShLua.transpile(source, target)
     end
     local module = TARGETS[target]
     return module.Serializer.serialize(module.new():translate(ast))
+end
+
+function ShLua.transpileFile(path, target)
+    assert(type(path) == "string", "ShLua.transpileFile expects an input path")
+    return ShLua.transpile(CLI.readFile(path), target, { rootPath = path })
 end
 
 ShLua.compile = ShLua.transpile
@@ -80,10 +91,11 @@ function ShLua.main(rawArgs)
 
     local success, failure = pcall(function()
         local source = CLI.readFile(opts.input)
+        local bundled = ShLua.bundle(source, { rootPath = opts.input })
         if opts.verbose then
-            print("[shlua] parsing " .. opts.input)
+            print("[shlua] bundled " .. #bundled.modules .. " local module(s) from " .. opts.input)
         end
-        local ast = ShLua.parse(source)
+        local ast = Parser.new(Lexer.new(bundled.source):tokenize()):parse()
         if opts.dumpAst then
             print("=== LUA AST DUMP ===")
             dumpValue(ast)
