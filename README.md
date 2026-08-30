@@ -103,6 +103,9 @@ local bash = ShLua.transpile(source, "bash")
 local powershell = ShLua.compile(source, "ps1")
 local both = ShLua.transpile(source, "all")
 
+-- Resolve project-local modules relative to an input file before transpiling.
+local bundledBash = ShLua.transpileFile("scripts/main.lua", "bash")
+
 -- Transpiling (To output file!) Bash
 local bashFile = assert(io.open("greet.sh", "w"))
 bashFile:write(bash)
@@ -126,8 +129,13 @@ ShLua accepts Lua 5.1 syntax and transpiles to Bash 3.2+ and PowerShell 3.0+ (in
 
 > 🚧 Still in early development, conceptual-only so far.
 
-`require()` in the Lua source being transpiled is not supported yet. The `require("shlua")` call
-in the library example above only loads ShLua into the host Lua runtime.
+`require()` is resolved before transpilation. Standard-library imports such as `require("io")`, `require("os")`,
+and `require("string")` are removed because their supported helpers are embedded in generated scripts. Project-local
+modules are recursively bundled from the input file's directory; dotted module names resolve to `module/name.lua` or
+`module/name/init.lua`. Missing modules and dependency cycles are rejected with clear errors.
+
+The alpha bundler flattens modules that expose globals or perform side effects. Conventional return-value modules
+(for example, `local M = {}; return M`) are not yet preserved by the target-language subset.
 
 Not whole 5.1 stdlib ported yet to bash and ps1. Working on that.
 
