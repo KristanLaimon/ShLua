@@ -52,7 +52,11 @@ function M.render(library, requirements, target)
             required[helper] = true
         end
     end
+    local roots = {}
     for helper in pairs(required) do
+        table.insert(roots, helper)
+    end
+    for _, helper in ipairs(roots) do
         includeDependencies(helper)
     end
 
