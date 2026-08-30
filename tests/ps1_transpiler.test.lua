@@ -43,7 +43,7 @@ else
 end]])
         expect(contains(code, "($count -ge 2)")).toBeTruthy()
         expect(contains(code, "} elseif (")).toBeTruthy()
-        expect(contains(code, "Write-Output 'go'")).toBeTruthy()
+        expect(contains(code, "__luash_print 'go'")).toBeTruthy()
     end)
 
     it("emits unary operations and exponentiation", function()

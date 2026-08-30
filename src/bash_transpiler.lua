@@ -359,7 +359,11 @@ function Generator:command(node)
     end
     local arguments = {}
     for _, argument in ipairs(node.args) do
-        table.insert(arguments, self:expression(argument))
+        if node.callee == "print" and argument.type == "Literal" and argument.value == nil then
+            table.insert(arguments, "'nil'")
+        else
+            table.insert(arguments, self:expression(argument))
+        end
     end
     if node.callee == "print" then
         if #arguments == 0 then
@@ -422,8 +426,13 @@ function Generator:expression(node)
             .. self:expression(node.key)
             .. ')"'
     elseif node.type == "CallExpr" then
-        if node.callee == "tostring" and #node.args == 1 then
-            return self:expression(node.args[1])
+        if
+            (node.callee == "tostring" or node.callee == "type")
+            and #node.args == 1
+            and node.args[1].type == "Literal"
+            and node.args[1].value == nil
+        then
+            return "'nil'"
         end
         return '"$(' .. self:command(node) .. ')"'
     elseif node.type == "FunctionExpr" then

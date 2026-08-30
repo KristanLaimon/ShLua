@@ -123,7 +123,7 @@ local Luash = require("luash")
 local bash = Luash.transpile("local x = 1 + 2\nprint(x)", "bash")
 local ps1 = Luash.transpile("local x = 1 + 2\nprint(x)", "ps1")
 assert(bash:find("#!/usr/bin/env bash", 1, true) == 1, "Build Error: Bash smoke test failed")
-assert(ps1:find("Write-Output", 1, true), "Build Error: PowerShell smoke test failed")
+assert(ps1:find("__luash_print", 1, true), "Build Error: PowerShell smoke test failed")
 
 print("Built dist/luash.lua (standalone CLI + require-able module)")
 print("=== BUILD SUCCESSFUL ===")

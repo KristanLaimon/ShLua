@@ -78,7 +78,7 @@ local function collectMetadata(program)
     local closures = {}
     local functionNames = {}
     local capturedFunctionNames = {}
-    local runtime = { call = false }
+    local runtime = { call = false, print = false }
     local visitExpression
     local visitStatements
 
@@ -104,6 +104,9 @@ local function collectMetadata(program)
                 visitExpression(field.value)
             end
         elseif node.type == "CallExpr" then
+            if node.callee == "print" then
+                runtime.print = true
+            end
             if node.callee == "table.sort" and #node.args == 2 then
                 runtime.call = true
             end
@@ -283,7 +286,7 @@ function Generator:command(node)
         table.insert(arguments, self:expression(argument))
     end
     if node.callee == "print" then
-        return "Write-Output" .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
+        return "__luash_print" .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
     end
     local callee = helper or node.resolvedCallee or node.callee
     if self.capturedFunctionNames[callee] then
@@ -348,9 +351,6 @@ function Generator:expression(node)
             .. self:expression(node.key)
             .. ")"
     elseif node.type == "CallExpr" then
-        if node.callee == "tostring" and #node.args == 1 then
-            return "([string] " .. self:expression(node.args[1]) .. ")"
-        end
         return "$(" .. self:command(node) .. ")"
     elseif node.type == "FunctionExpr" then
         return self:closureValue(node)
@@ -755,8 +755,28 @@ function Generator:callRuntime()
 }]=]
 end
 
+function Generator:printRuntime()
+    return [=[function __luash_print {
+    param([Parameter(ValueFromRemainingArguments = $true)] [object[]] $Values)
+    $Rendered = foreach ($Value in $Values) {
+        if ($null -eq $Value) { 'nil' }
+        elseif ($Value -is [bool]) { $Value.ToString().ToLowerInvariant() }
+        elseif (
+            $Value -is [byte] -or $Value -is [int16] -or $Value -is [int32] -or $Value -is [int64] -or
+            $Value -is [single] -or $Value -is [double] -or $Value -is [decimal]
+        ) { [Convert]::ToString($Value, [Globalization.CultureInfo]::InvariantCulture) }
+        else { [string] $Value }
+    }
+    [Console]::Out.WriteLine(($Rendered -join "`t"))
+}]=]
+end
+
 function Generator:generate(program)
     local output = {}
+    if self.runtime.print then
+        table.insert(output, self:printRuntime())
+        table.insert(output, "")
+    end
     if self.runtime.call then
         table.insert(output, self:callRuntime())
         table.insert(output, "")
