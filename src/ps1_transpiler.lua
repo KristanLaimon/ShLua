@@ -299,6 +299,21 @@ function Generator:command(node)
     return callee .. (#arguments > 0 and " " .. table.concat(arguments, " ") or "")
 end
 
+function Generator:methodCommand(node)
+    if node.method == "write" then
+        if #node.args ~= 1 then
+            error("PS1Transpiler Error: file:write expects one value")
+        end
+        return "__shlua_io_file_write " .. self:expression(node.receiver) .. " " .. self:expression(node.args[1])
+    elseif node.method == "close" then
+        if #node.args ~= 0 then
+            error("PS1Transpiler Error: file:close expects no arguments")
+        end
+        return "__shlua_io_file_close " .. self:expression(node.receiver)
+    end
+    error("PS1Transpiler Error: unsupported method call '" .. node.method .. "'")
+end
+
 function Generator:expression(node)
     if node.type == "Literal" then
         if node.value == nil then
@@ -352,6 +367,8 @@ function Generator:expression(node)
             .. ")"
     elseif node.type == "CallExpr" then
         return "$(" .. self:command(node) .. ")"
+    elseif node.type == "MethodCallExpr" then
+        return "$(" .. self:methodCommand(node) .. ")"
     elseif node.type == "FunctionExpr" then
         return self:closureValue(node)
     elseif node.type == "UnaryExpr" then
@@ -509,7 +526,9 @@ function Generator:coroutineResume(names, call, level)
 end
 
 function Generator:statement(statement, level)
-    if statement.type == "FunctionDecl" then
+    if statement.type == "RequireStmt" then
+        return ""
+    elseif statement.type == "FunctionDecl" then
         if self.workers[statement.name] then
             return self:coroutineWorker(statement, level)
         end
@@ -558,7 +577,17 @@ function Generator:statement(statement, level)
         end
         return output
     elseif statement.type == "MultiLocalVarDecl" or statement.type == "MultiAssignmentStmt" then
-        if not isCall(statement.init, "coroutine.resume") then
+        if statement.init.type == "MethodCallExpr" and statement.init.method == "write" and #statement.names == 2 then
+            local names = statement.resolvedNames or statement.names
+            local output = {
+                indent(level) .. "$" .. names[1] .. " = $null",
+                indent(level) .. "$" .. names[2] .. " = $null",
+                indent(level) .. "try { " .. self:methodCommand(statement.init) .. " } catch {",
+                indent(level + 1) .. "$" .. names[2] .. " = $_.Exception.Message",
+                indent(level) .. "}",
+            }
+            return table.concat(output, "\n")
+        elseif not isCall(statement.init, "coroutine.resume") then
             error("PS1Transpiler Error: multiple assignment is supported only for coroutine.resume")
         end
         return self:coroutineResume(statement.resolvedNames or statement.names, statement.init, level)
@@ -740,6 +769,8 @@ function Generator:statement(statement, level)
             return self:coroutineResume({}, statement.expr, level)
         elseif statement.expr.type == "CallExpr" then
             return indent(level) .. self:command(statement.expr)
+        elseif statement.expr.type == "MethodCallExpr" then
+            return indent(level) .. self:methodCommand(statement.expr)
         end
     end
     error("PS1Transpiler Error: unsupported statement " .. tostring(statement.type))

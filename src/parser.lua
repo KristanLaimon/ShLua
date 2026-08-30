@@ -100,6 +100,17 @@ function Parser:parseCall(callee)
     return { type = "CallExpr", callee = callee, args = arguments }
 end
 
+local function requireModule(expression)
+    if expression.type ~= "CallExpr" or expression.callee ~= "require" or #expression.args ~= 1 then
+        return nil
+    end
+    local argument = expression.args[1]
+    if argument.type ~= "Literal" or type(argument.value) ~= "string" then
+        return nil
+    end
+    return argument.value
+end
+
 local function dottedName(node)
     if node.type == "Identifier" then
         return node.name
@@ -241,6 +252,22 @@ function Parser:parsePrimary()
                 error("Parse Error: calls through indexed expressions are not supported")
             end
             expression = self:parseCall(callee)
+        elseif self:peek().value == ":" then
+            self:advance()
+            local method = self:expect("IDENTIFIER").value
+            self:expect("OPERATOR", "(")
+            local arguments = {}
+            if self:peek().value ~= ")" then
+                repeat
+                    table.insert(arguments, self:parseExpression())
+                    if self:peek().value ~= "," then
+                        break
+                    end
+                    self:advance()
+                until false
+            end
+            self:expect("OPERATOR", ")")
+            expression = { type = "MethodCallExpr", receiver = expression, method = method, args = arguments }
         else
             break
         end
@@ -380,6 +407,10 @@ function Parser:parseStatement()
             init = self:parseExpression()
         end
         if #names == 1 then
+            local module = requireModule(init)
+            if module then
+                return { type = "RequireStmt", name = names[1], module = module }
+            end
             return { type = "LocalVarDecl", name = names[1], init = init }
         end
         return { type = "MultiLocalVarDecl", names = names, init = init }

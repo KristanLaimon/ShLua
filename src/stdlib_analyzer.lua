@@ -65,6 +65,16 @@ function M.analyze(program)
             for _, argument in ipairs(node.args) do
                 visitExpression(argument)
             end
+        elseif node.type == "MethodCallExpr" then
+            if node.method == "write" then
+                requireHelper(required, "io", "__shlua_io_file_write")
+            elseif node.method == "close" then
+                requireHelper(required, "io", "__shlua_io_file_close")
+            end
+            visitExpression(node.receiver)
+            for _, argument in ipairs(node.args) do
+                visitExpression(argument)
+            end
         elseif node.type == "UnaryExpr" then
             if node.operator == "#" then
                 requireHelper(required, "table", "__shlua_length")

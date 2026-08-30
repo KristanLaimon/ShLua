@@ -163,6 +163,11 @@ function ScopeResolver:resolveExpression(node)
         elseif node.callee == "tonumber" or node.callee == "table.maxn" then
             node.staticType = "number"
         end
+    elseif node.type == "MethodCallExpr" then
+        self:resolveExpression(node.receiver)
+        for _, argument in ipairs(node.args) do
+            self:resolveExpression(argument)
+        end
     elseif node.type == "FunctionExpr" then
         self:resolveFunction(node)
     end
@@ -195,7 +200,9 @@ function ScopeResolver:resolveScopedBody(statements)
 end
 
 function ScopeResolver:resolveStatement(statement)
-    if statement.type == "LocalVarDecl" then
+    if statement.type == "RequireStmt" then
+        return
+    elseif statement.type == "LocalVarDecl" then
         self:resolveExpression(statement.init)
         local binding = self:declare(statement.name, "variable", true)
         binding.valueType = statement.init.staticType

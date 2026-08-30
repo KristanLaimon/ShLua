@@ -40,6 +40,7 @@ local scriptTestFiles = {
     "tests/scripts/09_powershell_stdlib.test.lua",
     "tests/scripts/10_hard_test.test.lua",
     "tests/scripts/11_tables.test.lua",
+    "tests/scripts/12_file_handle_methods.test.lua",
 }
 
 local testFiles = {
@@ -63,6 +64,9 @@ local function cleanupGeneratedScripts()
         os.remove(basePath .. ".sh")
         os.remove(basePath .. ".ps1")
     end
+    os.remove("tests/scripts/12_file_handle_methods_runtime.sh")
+    os.remove("tests/scripts/12_file_handle_methods_runtime.ps1")
+    os.remove("tests/scripts/12_file_handle_methods_runtime_output.txt")
 end
 
 print("=== ShLua Test Suite ===\n")
