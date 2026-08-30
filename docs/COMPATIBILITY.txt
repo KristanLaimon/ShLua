@@ -6,6 +6,7 @@
 - Runtime dependencies: Lua 5.1 standard library only; no LuaRocks or external modules.
 - Source code must remain valid under StyLua's `Lua51` parser and Luacheck's `lua51` standard.
 - `dist/luash.lua` is self-contained and works as both an executable CLI and `require("luash")` module.
+- `dist/luash.exe` (Windows x64) and `dist/luash` (Linux x64) are self-running SRLua 5.1.5 packages of the same bundle.
 
 ## 2. Supported input subset
 

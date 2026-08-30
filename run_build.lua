@@ -54,6 +54,27 @@ local SOURCE_FILES = {
     "src/luash.lua",
 }
 
+-- Prebuilt Lua 5.1 SRLua runtimes are versioned with the repository so a build
+-- never needs LuaInstaller, a C compiler, or network access. The footer widths
+-- match the C `long` used by SRLua's glue utility for each target ABI.
+local SRLUA_TARGETS = {
+    {
+        name = "Windows x64",
+        runtime = "tools/srlua/windows/srlua515.exe",
+        output = "dist/luash.exe",
+        footerLongBytes = 4,
+        magic = "MZ",
+    },
+    {
+        name = "Linux x64",
+        runtime = "tools/srlua/linux/srlua515",
+        output = "dist/luash",
+        footerLongBytes = 8,
+        magic = "\127ELF",
+        executable = true,
+    },
+}
+
 local function readFile(path)
     local file, err = io.open(path, "rb")
     assert(file, "Build Error: cannot read " .. path .. ": " .. tostring(err))
@@ -61,6 +82,14 @@ local function readFile(path)
     file:close()
     local normalized = content:gsub("\r\n", "\n")
     return normalized
+end
+
+local function readBinaryFile(path)
+    local file, err = io.open(path, "rb")
+    assert(file, "Build Error: cannot read " .. path .. ": " .. tostring(err))
+    local content = file:read("*a")
+    file:close()
+    return content
 end
 
 local function writeFile(path, content)
@@ -80,6 +109,43 @@ end
 local function syntaxCheck(path)
     local chunk, err = loadfile(path)
     assert(chunk, "Syntax Error in " .. path .. ": " .. tostring(err))
+end
+
+local function encodeLittleEndian(value, byteCount)
+    local bytes = {}
+    for index = 1, byteCount do
+        bytes[index] = string.char(value % 256)
+        value = math.floor(value / 256)
+    end
+    assert(value == 0, "Build Error: SRLua payload is too large")
+    return table.concat(bytes)
+end
+
+local function srluaPayload(bundle)
+    local newlineIndex = assert(bundle:find("\n", 1, true), "Build Error: bundled Lua source has no first line")
+    assert(bundle:sub(1, newlineIndex - 1) == "#!/usr/bin/env lua", "Build Error: bundled Lua shebang is missing")
+    return bundle:sub(newlineIndex + 1)
+end
+
+local function packageSrlua(bundle)
+    local payload = srluaPayload(bundle)
+    for _, target in ipairs(SRLUA_TARGETS) do
+        local runtime = readBinaryFile(target.runtime)
+        assert(
+            runtime:sub(1, #target.magic) == target.magic,
+            "Build Error: invalid " .. target.name .. " SRLua runtime"
+        )
+
+        local footer = "%%glue:L"
+            .. encodeLittleEndian(#runtime, target.footerLongBytes)
+            .. encodeLittleEndian(#payload, target.footerLongBytes)
+        writeFile(target.output, runtime .. payload .. footer)
+
+        if target.executable and package.config:sub(1, 1) == "/" then
+            local ok = os.execute('chmod +x "' .. target.output .. '"')
+            assert(ok == true or ok == 0, "Build Error: could not mark " .. target.output .. " executable")
+        end
+    end
 end
 
 local function buildBundle()
@@ -108,15 +174,18 @@ return __luash
 ]]
     )
     ensureDistDirectory()
-    writeFile("dist/luash.lua", table.concat(chunks))
+    local bundle = table.concat(chunks)
+    writeFile("dist/luash.lua", bundle)
+    return bundle
 end
 
 print("=== Luash Build ===")
 for _, path in ipairs(SOURCE_FILES) do
     syntaxCheck(path)
 end
-buildBundle()
+local bundle = buildBundle()
 syntaxCheck("dist/luash.lua")
+packageSrlua(bundle)
 
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
 local Luash = require("luash")
@@ -125,5 +194,5 @@ local ps1 = Luash.transpile("local x = 1 + 2\nprint(x)", "ps1")
 assert(bash:find("#!/usr/bin/env bash", 1, true) == 1, "Build Error: Bash smoke test failed")
 assert(ps1:find("__luash_print", 1, true), "Build Error: PowerShell smoke test failed")
 
-print("Built dist/luash.lua (standalone CLI + require-able module)")
+print("Built dist/luash.lua, dist/luash.exe, and dist/luash (standalone CLI artifacts)")
 print("=== BUILD SUCCESSFUL ===")

@@ -1,3 +1,4 @@
 dist/
 tests/scripts/*.sh
 tests/scripts/*.ps1
+.krsnvim/

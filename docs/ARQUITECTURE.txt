@@ -161,7 +161,9 @@ internals.
 
 `run_build.lua` wraps every compiler module in `package.preload`, embeds them in `dist/luash.lua`, and appends a small
 dispatcher. Loading that file through `require("luash")` returns the API; executing it runs the CLI. The generated file
-uses only the Lua standard library and must not read modules from the repository at runtime.
+uses only the Lua standard library and must not read modules from the repository at runtime. The same build glues that
+bundle to versioned SRLua 5.1 runtimes, producing `dist/luash.exe` for Windows x64 and `dist/luash` for Linux x64
+without requiring a compiler or external packager.
 
 ## 11. Verification architecture
 
