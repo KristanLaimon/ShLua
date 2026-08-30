@@ -17,6 +17,9 @@ M.unsupported = {
     ["os.setlocale"] = "locale mutation is not portable across target shells",
 }
 
+M.prefix = [[__luash_os_clock_started="${SECONDS:-0}"]]
+M.prefixHelpers = { __luash_os_clock = true }
+
 M.source = [[__luash_os_clock_started="${SECONDS:-0}"
 
 __luash_os_clock() {

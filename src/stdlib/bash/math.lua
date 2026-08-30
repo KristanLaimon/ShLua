@@ -39,6 +39,13 @@ M.unsupported = {
     ["math.randomseed"] = "cannot preserve generator state through Bash command substitution",
 }
 
+M.dependencies = {}
+for name, helper in pairs(M.functions) do
+    if name ~= "math.max" and name ~= "math.min" then
+        M.dependencies[helper] = { "__luash_math_eval" }
+    end
+end
+
 M.source = [[__luash_math_eval() {
     local __luash_program="$1"
     local __luash_x="${2:-0}"

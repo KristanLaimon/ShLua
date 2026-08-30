@@ -3,6 +3,7 @@ PS1Transpiler.__index = PS1Transpiler
 
 local ScopeResolver = require("scope_resolver")
 local StdlibAnalyzer = require("stdlib_analyzer")
+local StdlibSelector = require("stdlib_selector")
 local PS1Base = require("stdlib.powershell.base")
 local PS1IO = require("stdlib.powershell.io")
 local PS1Math = require("stdlib.powershell.math")
@@ -225,7 +226,7 @@ function PS1Transpiler:translate(luaAST)
     local stdlibs = {}
     for _, library in ipairs(STDLIBS) do
         if requiredStdlibs[library.name] then
-            table.insert(stdlibs, library)
+            table.insert(stdlibs, { library = library, requirements = requiredStdlibs[library.name] })
         end
     end
     local workers = self:collectCoroutineWorkers(luaAST)
@@ -760,8 +761,8 @@ function Generator:generate(program)
         table.insert(output, self:callRuntime())
         table.insert(output, "")
     end
-    for _, library in ipairs(self.stdlibs) do
-        table.insert(output, library.source)
+    for _, selected in ipairs(self.stdlibs) do
+        table.insert(output, StdlibSelector.render(selected.library, selected.requirements, "powershell"))
         table.insert(output, "")
     end
     for _, closure in ipairs(self.closures) do

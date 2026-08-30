@@ -38,6 +38,35 @@ io.write(render(-1))]])
         expect(ps1:find("function __luash_string_rep", 1, true) ~= nil).toBeFalsy()
     end)
 
+    it("injects only requested helpers and their declared dependencies", function()
+        for _, target in ipairs({ "bash", "ps1" }) do
+            local clock = Luash.transpile("print(os.clock())", target)
+            expect(clock:find("__luash_os_clock", 1, true) ~= nil).toBeTruthy()
+            expect(clock:find("__luash_os_date", 1, true) == nil).toBeTruthy()
+            expect(clock:find("__luash_os_execute", 1, true) == nil).toBeTruthy()
+
+            local floor = Luash.transpile("print(math.floor(2.5))", target)
+            expect(floor:find("__luash_math_floor", 1, true) ~= nil).toBeTruthy()
+            expect(floor:find("__luash_math_max", 1, true) == nil).toBeTruthy()
+            expect(floor:find("__luash_math_min", 1, true) == nil).toBeTruthy()
+        end
+
+        local bashFloor = Luash.transpile("print(math.floor(2.5))", "bash")
+        expect(bashFloor:find("__luash_math_eval", 1, true) ~= nil).toBeTruthy()
+
+        for _, target in ipairs({ "bash", "ps1" }) do
+            local concat = Luash.transpile(
+                [[local values = { "a", "b" }
+print(table.concat(values, ","))]],
+                target
+            )
+            expect(concat:find("__luash_table_concat", 1, true) ~= nil).toBeTruthy()
+            expect(concat:find("__luash_table_get", 1, true) ~= nil).toBeTruthy()
+            expect(concat:find("__luash_table_sort", 1, true) == nil).toBeTruthy()
+            expect(concat:find("__luash_table_remove", 1, true) == nil).toBeTruthy()
+        end
+    end)
+
     it("selects table support for syntax and generic iteration", function()
         local required = analyze([[local values = { name = "Luash" }
 values[1] = values.name

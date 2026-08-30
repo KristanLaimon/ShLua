@@ -28,6 +28,21 @@ local function libraryForName(name)
     return nil
 end
 
+local function requirement(required, library)
+    if not required[library] then
+        required[library] = { calls = {}, helpers = {} }
+    end
+    return required[library]
+end
+
+local function requireCall(required, library, name)
+    requirement(required, library).calls[name] = true
+end
+
+local function requireHelper(required, library, helper)
+    requirement(required, library).helpers[helper] = true
+end
+
 function M.analyze(program)
     assert(program and program.type == "Program", "Stdlib analyzer expects a Program AST")
     local required = {}
@@ -40,30 +55,31 @@ function M.analyze(program)
         elseif node.type == "Identifier" then
             local library = libraryForName(node.name)
             if library then
-                required[library] = true
+                requireCall(required, library, node.name)
             end
         elseif node.type == "CallExpr" then
             local library = libraryForName(node.callee)
             if library then
-                required[library] = true
+                requireCall(required, library, node.callee)
             end
             for _, argument in ipairs(node.args) do
                 visitExpression(argument)
             end
         elseif node.type == "UnaryExpr" then
             if node.operator == "#" then
-                required.table = true
+                requireHelper(required, "table", "__luash_length")
             end
             visitExpression(node.operand)
         elseif node.type == "BinaryExpr" then
             visitExpression(node.left)
             visitExpression(node.right)
         elseif node.type == "IndexExpr" then
-            required.table = true
+            requireHelper(required, "table", "__luash_table_get")
             visitExpression(node.table)
             visitExpression(node.key)
         elseif node.type == "TableConstructor" then
-            required.table = true
+            requireHelper(required, "table", "__luash_table_new")
+            requireHelper(required, "table", "__luash_table_set")
             for _, field in ipairs(node.fields) do
                 visitExpression(field.key)
                 visitExpression(field.value)
@@ -101,7 +117,7 @@ function M.analyze(program)
             elseif statement.type == "DoStmt" then
                 visitStatements(statement.body)
             elseif statement.type == "TableAssignmentStmt" then
-                required.table = true
+                requireHelper(required, "table", "__luash_table_set")
                 visitExpression(statement.table)
                 visitExpression(statement.key)
                 visitExpression(statement.init)

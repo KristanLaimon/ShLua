@@ -17,6 +17,9 @@ M.unsupported = {
     ["os.setlocale"] = "locale mutation is not portable across target shells",
 }
 
+M.prefix = [[$script:__luash_os_clock = [Diagnostics.Stopwatch]::StartNew()]]
+M.prefixHelpers = { __luash_os_clock = true }
+
 M.source = [=[$script:__luash_os_clock = [Diagnostics.Stopwatch]::StartNew()
 function __luash_os_clock { $script:__luash_os_clock.Elapsed.TotalSeconds }
 function __luash_os_date {

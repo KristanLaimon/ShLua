@@ -10,6 +10,7 @@ local FILES = {
     "src/parser.lua",
     "src/scope_resolver.lua",
     "src/stdlib_analyzer.lua",
+    "src/stdlib_selector.lua",
     "src/ITranspiler.lua",
     "src/stdlib/bash/base.lua",
     "src/stdlib/bash/io.lua",

@@ -13,6 +13,37 @@ M.unsupported = {
     ipairs = "ipairs is supported only as the iterator of a generic for loop",
 }
 
+M.prefix = [=[__luash_table_root="$(mktemp -d "${TMPDIR:-/tmp}/luash-table.XXXXXX")" || exit 1
+__luash_table_cleanup() {
+    rm -rf -- "$__luash_table_root"
+}
+trap '__luash_table_cleanup' EXIT]=]
+
+M.callHelpers = {
+    ipairs = { "__luash_table_contains", "__luash_table_get" },
+    pairs = { "__luash_table_entry_exists", "__luash_table_entry_key", "__luash_table_entry_value" },
+}
+
+M.dependencies = {
+    __luash_table_find = { "__luash_table_infer_key_type", "__luash_table_normalize_number" },
+    __luash_table_set = { "__luash_table_infer_key_type", "__luash_table_normalize_number", "__luash_table_find" },
+    __luash_table_new = { "__luash_table_set" },
+    __luash_table_contains = { "__luash_table_find" },
+    __luash_table_get = { "__luash_table_find" },
+    __luash_table_length = { "__luash_table_contains" },
+    __luash_length = { "__luash_table_length" },
+    __luash_table_concat = { "__luash_table_length", "__luash_table_contains", "__luash_table_get" },
+    __luash_table_insert = { "__luash_table_length", "__luash_table_set", "__luash_table_get" },
+    __luash_table_remove = { "__luash_table_length", "__luash_table_get", "__luash_table_set" },
+    __luash_table_sort = {
+        "__luash_table_length",
+        "__luash_table_get",
+        "__luash_table_truthy",
+        "__luash_table_less",
+        "__luash_table_set",
+    },
+}
+
 M.source = [=[__luash_table_root="$(mktemp -d "${TMPDIR:-/tmp}/luash-table.XXXXXX")" || exit 1
 __luash_table_cleanup() {
     rm -rf -- "$__luash_table_root"

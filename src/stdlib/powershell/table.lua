@@ -13,6 +13,22 @@ M.unsupported = {
     ipairs = "ipairs is supported only as the iterator of a generic for loop",
 }
 
+M.callHelpers = {
+    ipairs = { "__luash_table_contains", "__luash_table_get" },
+}
+
+M.dependencies = {
+    __luash_table_set = { "__luash_table_key" },
+    __luash_table_contains = { "__luash_table_key" },
+    __luash_table_get = { "__luash_table_key" },
+    __luash_table_length = { "__luash_table_contains" },
+    __luash_length = { "__luash_table_length" },
+    __luash_table_concat = { "__luash_table_length", "__luash_table_contains", "__luash_table_get" },
+    __luash_table_insert = { "__luash_table_length", "__luash_table_set", "__luash_table_get" },
+    __luash_table_remove = { "__luash_table_length", "__luash_table_get", "__luash_table_set" },
+    __luash_table_sort = { "__luash_table_length", "__luash_table_get", "__luash_table_truthy", "__luash_table_set" },
+}
+
 M.source = [=[function __luash_table_new {
     @{
         __LuashTable = $true
