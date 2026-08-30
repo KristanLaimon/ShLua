@@ -16,30 +16,25 @@
 
 ---
 
-
 **ShLua** lets you write your script logic once in clean Lua and automatically transpile it to native, zero-dependency **Bash** and **PowerShell** scripts. No new syntax or DSL to learn, no forcing other script-interpreted runtimes onto your users—just fast, cross-platform scripts that run out-of-the-box in any terminal or CI pipeline.
-
-> 🚧 Still in early development, conceptual-only so far.
 
 ---
 
 ## ✨ Features
 
 - 🔄 **Lua to Shell Transpilation**: Write maintainable Lua scripts and transpile them to native shell scripts (Bash / PowerShell).
-- ⚡ **Portable CLI**: Run the bundled Lua CLI or a standalone Windows or Linux executable.
-- 🔌 **Seamless Editor Support**: Native integrations for NVIM, VS Code, Visual Studio, and JetBrains.
-- 📦 **No Setup Required**: Easy installation and execution across platforms.
+- ⚡ **Portable CLI**: Run the bundled Lua CLI file or a standalone Windows or Linux executable.
+- 📦 **No extra setup required**: Easy installation and execution across platforms, no additional/external dependencies. Just
+download and use. 
 
-
-> *Lua is simple, expressive, and lightweight—why shouldn't our build, CI, and helper scripts be as well?*
 
 ---
 
-## 📦 Distributables
+## 📦 Installing
 
-The `dist/` directory contains the three current distribution artifacts:
+Go to [releases](https://github.com/KristanLaimon/ShLua/releases/latest), then you can download the following formats.
 
-- `shlua.lua` — dependency-free Lua library and CLI.
+- `shlua.lua` — dependency-free Lua 5.1 compatible library and usable as CLI.
 - `shlua.exe` — standalone Windows x64 CLI executable.
 - `shlua` — standalone Linux x64 CLI executable.
 
@@ -47,9 +42,26 @@ The `dist/` directory contains the three current distribution artifacts:
 
 ## 🚀 Usage
 
-### CLI
+### As a standalone CLI 
 
-Run `--help` with the Lua distribution, Windows executable, or Linux executable:
+
+First check  [Installing instructions](## 📦 Installing), then run `--help` with the Lua distribution, Windows executable, or Linux executable:
+
+```bash
+# Used as a CLI. You need lua >= 5.1 installed in your PATH env variable.
+lua shlua.lua --help
+```
+
+```bash
+# Windows
+./luash_win_x64.exe --help
+```
+
+```bash
+# Linux-Based OS
+./luash --help
+
+```
 
 ```text
 ShLua v0.1.0-alpha - Transpile Lua code to Bash, PowerShell, or both.
@@ -68,32 +80,10 @@ OPTIONS:
     -h, --help             Show this help menu and exit.
 ```
 
-From the `dist/` directory, the same arguments work with every CLI distribution:
 
-```bash
-# Lua CLI
-lua ./shlua.lua ./script.lua -t all -o ./build/script
-
-# Windows executable (PowerShell)
-.\shlua.exe .\script.lua -t bash -o .\build\script
-
-# Linux executable
-./shlua ./script.lua -t ps1 -o ./build/script
-```
-
-`<input.lua>` may be supplied positionally or with `-i` / `--input`. `-o` / `--output` sets the output base path; when
-the target is `all`, ShLua writes both `.sh` and `.ps1` files. `-t` / `--target` selects `bash`, `ps1`, or `all`
-(the default). Use `-a` / `--dump-ast` to print the parsed Lua AST without generating output, `-v` / `--verbose` for
-pipeline messages, and `-h` / `--help` to show the help text.
-
-### Lua library
-
-Load `dist/shlua.lua` as `shlua` and use `parse`, `transpile`, or its `compile` alias. `transpile` and `compile` accept
-`"bash"`, `"ps1"`, or `"all"`; `"all"` returns a table with `bash` and `ps1` strings.
-
+## As a Library (Support for >= lua 5.1)
 ```lua
-package.path = "./dist/?.lua;" .. package.path
-
+-- Your custom lua script...
 local ShLua = require("shlua")
 
 local source = [[
@@ -102,19 +92,19 @@ local function greet(name)
 end
 
 print(greet("Lua"))
-]]
+]] -- Or reading from another .lua file in CWD...
 
-local ast = ShLua.parse(source)
-assert(ast.type == "Program")
-
+-- Transpiling (In memory)
 local bash = ShLua.transpile(source, "bash")
 local powershell = ShLua.compile(source, "ps1")
 local both = ShLua.transpile(source, "all")
 
+-- Transpiling (To output file!) Bash
 local bashFile = assert(io.open("greet.sh", "w"))
 bashFile:write(bash)
 bashFile:close()
 
+-- Transpiling (To output file!) Powershell
 local ps1File = assert(io.open("greet.ps1", "w"))
 ps1File:write(both.ps1) -- equivalent to `powershell`
 ps1File:close()
@@ -122,12 +112,20 @@ ps1File:close()
 
 ---
 
+## Compatibility
+
+ShLua accepts Lua 5.1 syntax and transpiles to Bash 3.2+ and PowerShell 3.0+ (including PowerShell Core 6+).
+
+---
+
 ## 🚧 Limitations
 
 > 🚧 Still in early development, conceptual-only so far.
 
-`require()` in the Lua source being transpiled is not supported yet and has not been tested. The `require("shlua")` call
+`require()` in the Lua source being transpiled is not supported yet. The `require("shlua")` call
 in the library example above only loads ShLua into the host Lua runtime.
+
+Not whole 5.1 stdlib ported yet to bash and ps1. Working on that.
 
 ---
 
@@ -135,8 +133,24 @@ in the library example above only loads ShLua into the host Lua runtime.
 
 While tweaking my [nvim-config](https://github.com/KristanLaimon/Nvim-Config), I found myself repeating a tedious task: writing separate helper scripts in **Bash** and **PowerShell** for projects like [PanelsPlus](https://github.com/KristanLaimon/PanelsPlus) so contributors could build and set things up effortlessly on any OS without needing a deep dive into the repo.
 
+So I thought:
+
+> *Lua is simple, expressive, and lightweight—why shouldn't our build, CI, and helper scripts be as well?*
+
 That highlighted a few common pain points:
 - **Bash & PowerShell syntaxes are wildly different.** Learning both completely and keeping their logic manually in sync is error-prone.
 - **Relying on AI gets tedious.** Prompting AI to translate script logic back and forth every time you make a change wastes time and tokens *(unless you're a token-maxxer, of course)*.
-- **Python or Node.js scripts add unnecessary bloat.** Forcing contributors or CI/CD pipelines to install Node.js, Bun, or Python *just* to run a setup script—especially on projects unrelated to JS or Python—is an annoying dependency lock-in.
-- **Makefiles & `package.json` scripts are fine—if you're already using them.** But they're tied down to their specific ecosystems. If your project isn't using Node or Make, adding them just for helper scripts feels forced.
+- **Python or Node.js scripts add unnecessary bloat for non-related projects.** Forcing contributors or CI/CD pipelines to install Node.js, Bun, or Python *just* to run a setup script—especially on projects that are possibly unrelated to JS or Python—is an annoying dependency lock-in, this applies for any other language.
+
+The purpose is not a drop-in replacements for already stablished-mature building programs. Just provide an alternative for your multi-OS scripting, `a simpler one`.
+
+## But, I already use ***** tool for building. Should I replace it with this?
+ **Makefiles, `package.json` scripts, python, or anything you use are fine if you're already using them.** 
+But they're tied down to their specific ecosystems. Of course, its natural to use `package.json` in js/ts projects or `Make` in C/C++ projects, (etc...), but what if you need your scripts outside of that ecosystem?, maybe for easily installation, faster CI actions pipelines...
+
+This aims for projects that:
+
+- Their build system lang is not related to the language of the project itself.
+- Want create multi-platform native scripts (sh and ps1) without having to learn those 2 and maintain them separately. 
+- Want curious git cloners that just want to clone-build fast without needing extra-effort. (Improving your proyect for possible new contributors)
+- Want to optimize their CI, so they can run all the needed scripts without needint to install a whole runtime or binary just to run lint, build, formatting (& more) scripts?
