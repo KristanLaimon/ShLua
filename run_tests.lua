@@ -16,7 +16,9 @@ local function runTestFile(filepath)
     local result = handle:read("*a")
     local success, _, code = handle:close()
 
-    if success and code == 0 then
+    -- Lua 5.1 returns only true from file:close()/pipe:close() on success,
+    -- whereas newer Lua versions also return an explicit zero exit code.
+    if success and (not code or code == 0) then
         print("PASS")
         return true, ""
     else
