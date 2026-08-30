@@ -8,9 +8,13 @@
   <em>"You know Lua? You already know full bash/powershell then!" &mdash; Nobody</em>
   <br><br>
   <a href="https://github.com/KristanLaimon/ShLua/releases/latest"><img src="https://img.shields.io/github/v/release/KristanLaimon/ShLua?color=blue&style=flat-square" alt="Latest Release"></a>
+<!--
   <a href="https://github.com/KristanLaimon/ShLua/releases"><img src="https://img.shields.io/github/downloads/KristanLaimon/ShLua/total?color=brightgreen&style=flat-square" alt="Downloads"></a>
+-->
   <a href="LICENSE"><img src="https://img.shields.io/github/license/KristanLaimon/ShLua?color=informational&style=flat-square" alt="MIT License"></a>
+<!--
   <a href="https://github.com/KristanLaimon/ShLua/stargazers"><img src="https://img.shields.io/github/stars/KristanLaimon/ShLua?style=flat-square" alt="GitHub Stars"></a>
+-->
   <a href="https://github.com/sponsors/KristanLaimon"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=github&style=flat-square" alt="Sponsor on GitHub"></a>
 </p>
 
