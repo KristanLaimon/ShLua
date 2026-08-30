@@ -45,6 +45,7 @@ local scriptTestFiles = {
 
 local testFiles = {
     "tests/lexer.test.lua",
+    "tests/luabundler.test.lua",
     "tests/parser.test.lua",
     "tests/bash_transpiler.test.lua",
     "tests/ps1_transpiler.test.lua",
