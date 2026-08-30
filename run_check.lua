@@ -37,6 +37,7 @@ local FILES = {
     "tests/dist.test.lua",
     "tests/script_test_helper.lua",
     "tests/stdlib_conformance.lua",
+    "tests/fixtures/hard_test.lua",
     "tests/scripts/00_minimal.test.lua",
     "tests/scripts/01_variables.test.lua",
     "tests/scripts/02_conditionals.test.lua",

@@ -14,7 +14,7 @@ end
 
 describe("10 - hard_test end to end", function()
     it("transpiles and executes the original fixture on installed shells", function()
-        local result = helper.compileAndRun("10_hard_test", readFile("hard_test.lua"))
+        local result = helper.compileAndRun("10_hard_test", readFile("tests/fixtures/hard_test.lua"))
         for _, target in ipairs({ "bash", "ps1" }) do
             local targetResult = result[target]
             expect(targetResult.code:find("require", 1, true) ~= nil).toBeFalsy()

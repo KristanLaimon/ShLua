@@ -2,3 +2,4 @@ dist/
 tests/scripts/*.sh
 tests/scripts/*.ps1
 .krsnvim/
+sr_lua.docs.txt

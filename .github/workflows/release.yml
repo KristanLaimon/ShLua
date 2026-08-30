@@ -1,0 +1,126 @@
+name: Draft release
+
+on:
+    push:
+        tags:
+            - "*"
+
+permissions:
+    contents: write
+
+jobs:
+    draft-release:
+        name: Build and draft release
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Check out the tagged revision
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Verify that the tag points to main
+              id: tag
+              shell: bash
+              run: |
+                  git fetch --force origin main --tags
+                  tag_commit="$(git rev-parse "${GITHUB_REF}^{commit}")"
+
+                  if ! git merge-base --is-ancestor "$tag_commit" origin/main; then
+                      echo "Tag ${GITHUB_REF_NAME} does not point to a commit reachable from main." >&2
+                      exit 1
+                  fi
+
+                  echo "commit=$tag_commit" >> "$GITHUB_OUTPUT"
+
+            - name: Set up Lua 5.1
+              uses: leafo/gh-actions-lua@v11
+              with:
+                  luaVersion: "5.1.5"
+
+            - name: Set up LuaRocks
+              uses: leafo/gh-actions-luarocks@v4
+
+            - name: Install validation tools
+              shell: bash
+              run: |
+                  luarocks install luacheck
+                  cargo install stylua --locked
+
+            - name: Build distributables
+              run: lua run_build.lua
+
+            - name: Run test suite
+              run: lua run_tests.lua
+
+            - name: Run quality checks
+              run: lua run_check.lua
+
+            - name: Smoke-test the Linux executable
+              run: ./dist/luash --help
+
+            - name: Stage release assets
+              shell: bash
+              run: |
+                  mkdir release
+                  cp dist/luash release/luash_linux_x64
+                  cp dist/luash.lua release/luash.lua
+                  cp dist/luash.exe release/luash_win_x64.exe
+                  chmod +x release/luash_linux_x64
+
+            - name: Create release notes from commits
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  TAG_COMMIT: ${{ steps.tag.outputs.commit }}
+              shell: bash
+              run: |
+                  previous_tag="$(git describe --tags --abbrev=0 "${TAG_COMMIT}^" 2>/dev/null || true)"
+
+                  write_commits() {
+                      local range="$1"
+                      local sha
+                      local short_sha
+                      local subject
+                      local author
+
+                      while IFS=$'\t' read -r sha short_sha subject; do
+                          author="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}" \
+                              --jq '.author.login // .commit.author.name')"
+                          printf '%s\n' "- ${subject} - @${author} ([${short_sha}](https://github.com/${GITHUB_REPOSITORY}/commit/${sha}))"
+                      done < <(git log --format='%H%x09%h%x09%s' "$range")
+                  }
+
+                  {
+                      echo "# Luash ${GITHUB_REF_NAME}"
+                      echo
+                      echo "## Changes"
+
+                      if [[ -n "$previous_tag" ]]; then
+                          echo
+                          echo "Changes since ${previous_tag}:"
+                          echo
+                          write_commits "${previous_tag}..${TAG_COMMIT}"
+                      else
+                          echo
+                          echo "First release; includes all commits since the beginning of the repository:"
+                          echo
+                          write_commits "$TAG_COMMIT"
+                      fi
+                  } > release-notes.md
+
+            - name: Create or refresh the draft release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              shell: bash
+              run: |
+                  assets=(release/luash_linux_x64 release/luash.lua release/luash_win_x64.exe)
+
+                  if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+                      gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber
+                      gh release edit "${GITHUB_REF_NAME}" --draft --title "Luash ${GITHUB_REF_NAME}" --notes-file release-notes.md
+                  else
+                      gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \
+                          --draft \
+                          --title "Luash ${GITHUB_REF_NAME}" \
+                          --notes-file release-notes.md
+                  fi
